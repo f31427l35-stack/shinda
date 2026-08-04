@@ -69,7 +69,7 @@ export default function DashboardPage() {
       )}
 
       <div className="flex flex-wrap gap-4 mb-4">
-        <StatCard label="Entries today" value={stats.entriesToday} />
+        <StatCard label="Deposits Today" value={stats.entriesToday} />
         <StatCard label="New numbers today" value={stats.newNumbersToday} />
         <StatCard label="Total entries" value={stats.totalEntries.toLocaleString()} />
         <StatCard label="Total participants" value={stats.totalParticipants.toLocaleString()} />
