@@ -69,7 +69,11 @@ export default function DashboardPage() {
               <CartesianGrid stroke="#27272a" vertical={false} />
               <XAxis dataKey="date" tick={{ fill: "#71717a", fontSize: 11 }} angle={-45} textAnchor="end" height={60} />
               <YAxis tick={{ fill: "#71717a", fontSize: 11 }} allowDecimals={false} />
-              <Tooltip contentStyle={{ background: "#18181b", border: "1px solid #3f3f46", borderRadius: 8 }} labelStyle={{ color: "#fff" }} formatter={(v: number) => [`KES ${v.toLocaleString()}`, "Revenue"]} />
+              <Tooltip
+                contentStyle={{ background: "#18181b", border: "1px solid #3f3f46", borderRadius: 8 }}
+                labelStyle={{ color: "#fff" }}
+                formatter={(value) => [`KES ${Number(value ?? 0).toLocaleString()}`, "Revenue"]}
+              />
               <Line type="monotone" dataKey="amount" stroke="#f59e0b" strokeWidth={2} dot={{ r: 3, fill: "#f59e0b" }} />
             </LineChart>
           </ResponsiveContainer>
