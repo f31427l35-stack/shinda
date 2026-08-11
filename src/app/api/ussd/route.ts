@@ -68,41 +68,73 @@ function menuText() {
   return `Welcome to Mama's Liquid Soap!\nChoose a package:\n${lines.join("\n")}`;
 }
 
+type UpesiPayResponse = {
+  success?: boolean;
+  message?: string;
+  data?: {
+    checkout_request_id?: string;
+    merchant_request_id?: string;
+    [key: string]: unknown;
+  };
+  [key: string]: unknown;
+};
+
 async function initiateStkPush(phone: string, amount: number, callbackUrl: string) {
   const authToken = Buffer.from(
     `${process.env.UPESIPAY_API_USERNAME}:${process.env.UPESIPAY_API_PASSWORD}`
   ).toString("base64");
   
-  const res = await fetch("https://upesipay.com", {
+  const res = await fetch("https://upesipay.com/api/v2/collections/initiate/", {
     method: "POST",
     headers: {
       Authorization: `Basic ${authToken}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      //  FIXED
       channel_id: process.env.UPESIPAY_CHANNEL_ID || "wallet",
       phone_number: phone,
       amount,
       callback_url: callbackUrl,
     }),
   });
-  
-  const data = await res.json();
-  return { ok: res.ok && data.success, data };
+
+  // Guard against non-JSON responses (e.g. an HTML error page from a bad
+  // endpoint/auth failure) so this never throws an uncaught parse error.
+  const rawText = await res.text();
+  let data: UpesiPayResponse;
+  try {
+    data = rawText ? JSON.parse(rawText) : {};
+  } catch {
+    console.error("UpesiPay returned a non-JSON response:", { status: res.status, rawText: rawText.slice(0, 300) });
+    data = { message: `Payment provider returned an unexpected response (status ${res.status}).` };
+  }
+
+  return { ok: res.ok && data.success === true, data };
 }
 
 export async function POST(req: NextRequest) {
   let payload: OnfonPayload;
-  let parsedAs: "json" | "formData";
+  let parsedAs: "json" | "formData" | "empty";
 
-  try {
-    payload = await req.json();
-    parsedAs = "json";
-  } catch {
-    const form = await req.formData();
-    payload = Object.fromEntries(form.entries()) as unknown as OnfonPayload;
-    parsedAs = "formData";
+  // NOTE: a request body stream can only be read once. Previously this code
+  // called req.json() and, on failure, req.formData() — but req.json() had
+  // already consumed the stream, so the fallback threw
+  // "TypeError: Body is unusable: Body has already been read".
+  // Read the raw text a single time, then parse it manually instead.
+  const rawBody = await req.text();
+
+  if (!rawBody) {
+    payload = {};
+    parsedAs = "empty";
+  } else {
+    try {
+      payload = JSON.parse(rawBody);
+      parsedAs = "json";
+    } catch {
+      const form = new URLSearchParams(rawBody);
+      payload = Object.fromEntries(form.entries()) as unknown as OnfonPayload;
+      parsedAs = "formData";
+    }
   }
 
   console.log("USSD raw payload received:", { parsedAs, payload });
@@ -167,7 +199,7 @@ export async function POST(req: NextRequest) {
     // Trigger payment aggregator pipeline wrapper
     const { ok, data } = await initiateStkPush(phone, totalAmount, callbackUrl);
 
-    if (!ok) {
+    if (!ok || !data.data?.checkout_request_id) {
       await sql`UPDATE orders SET status = 'failed' WHERE id = ${orderId}`;
       const errMsg = data?.message || "Could not send payment prompt.";
       return respond(`Sorry, ${errMsg} Please try again shortly.`, false);
@@ -177,7 +209,7 @@ export async function POST(req: NextRequest) {
       UPDATE orders 
       SET status = 'awaiting_payment', 
           checkout_request_id = ${data.data.checkout_request_id}, 
-          merchant_request_id = ${data.data.merchant_request_id} 
+          merchant_request_id = ${data.data.merchant_request_id ?? null} 
       WHERE id = ${orderId}
     `;
 
