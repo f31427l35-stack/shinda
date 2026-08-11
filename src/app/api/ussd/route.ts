@@ -70,10 +70,14 @@ function menuText() {
 }
 
 async function initiateStkPush(phone: string, amount: number, callbackUrl: string) {
+  const authToken = Buffer.from(
+    `${process.env.UPESIPAY_API_USERNAME}:${process.env.UPESIPAY_API_PASSWORD}`
+  ).toString("base64");
+
   const res = await fetch("https://upesipay.com/api/v2/collections/initiate/", {
     method: "POST",
     headers: {
-      Authorization: `Basic ${process.env.UPESIPAY_AUTH_TOKEN}`,
+      Authorization: `Basic ${authToken}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
