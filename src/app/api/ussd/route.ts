@@ -95,18 +95,27 @@ async function initiateStkPush(phone: string, amount: number, callbackUrl: strin
 
 export async function POST(req: NextRequest) {
   let payload: OnfonPayload;
+  let parsedAs: "json" | "formData";
   try {
     payload = await req.json();
+    parsedAs = "json";
   } catch {
     const form = await req.formData();
     payload = Object.fromEntries(form.entries()) as unknown as OnfonPayload;
+    parsedAs = "formData";
   }
+
+  // TEMP DIAGNOSTIC — remove once we've confirmed Onfon's real field names.
+  // Logs the exact keys/values received so we can compare against what the
+  // code expects (MSISDN, SESSIONID, INPUT, NEWREQUEST).
+  console.log("USSD raw payload", { parsedAs, payload });
 
   const rawPhone = (payload.MSISDN || "").trim();
   const sessionId = payload.SESSIONID || "";
   const rawInput = (payload.INPUT || "").trim();
 
   if (!rawPhone) {
+    console.log("USSD: no MSISDN field found, ending session early", { keysReceived: Object.keys(payload) });
     return respond("Sorry, something went wrong. Please try again.", false, payload);
   }
   const phone = normalizePhone(rawPhone);
