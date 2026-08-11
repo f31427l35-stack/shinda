@@ -1,48 +1,67 @@
 import { NextRequest, NextResponse } from "next/server";
 import { sql } from "@/lib/db";
-import { requireAuth } from "@/lib/requireAuth";
+import { requireAuth, requireAdmin } from "@/lib/requireAuth";
 
-// GET: Fetches the current min/max values to show in the UI modal
+// GET: Fetches the min and max limits from your product_prices table to show in the UI modal
 export async function GET() {
+  const auth = await requireAuth();
+  if ("error" in auth) return auth.error;
+
   try {
     const { rows } = await sql`
-      SELECT min_price, max_price FROM configurations WHERE id = 1 LIMIT 1
+      SELECT package_size, price FROM product_prices 
+      WHERE package_size IN ('MIN', 'MAX')
     `;
-    
-    if (rows.length === 0) {
-      return NextResponse.json({ min_price: 100, max_price: 1000 });
-    }
-    
+
+    // Map rows to clean variables with fallback defaults if they don't exist yet
+    const minRow = rows.find(r => r.package_size === 'MIN');
+    const maxRow = rows.find(r => r.package_size === 'MAX');
+
     return NextResponse.json({ 
-      min_price: rows[0].min_price, 
-      max_price: rows[0].max_price 
+      min_price: minRow ? minRow.price : 100, 
+      max_price: maxRow ? maxRow.price : 1000 
     });
   } catch (error) {
-    return NextResponse.json({ error: "Database error" }, { status: 500 });
+    console.error("GET prices configuration error:", error);
+    return NextResponse.json({ error: "Failed to read pricing configuration" }, { status: 500 });
   }
 }
 
-// PATCH: This saves the changing boundaries back into the DB
+// PATCH: This saves the changing boundaries back into your product_prices table
 export async function PATCH(req: NextRequest) {
-  const auth = await requireAuth();
+  const auth = await requireAdmin();
   if ("error" in auth) return auth.error;
 
   try {
     const { minPrice, maxPrice } = await req.json();
 
     if (minPrice === undefined || maxPrice === undefined) {
-      return NextResponse.json({ error: "Missing limits" }, { status: 400 });
+      return NextResponse.json({ error: "Missing required limits" }, { status: 400 });
     }
 
-    // Persist boundaries permanently inside configuration tracker
+    if (minPrice <= 0 || maxPrice <= 0 || minPrice > maxPrice) {
+      return NextResponse.json({ error: "Invalid pricing boundaries provided" }, { status: 400 });
+    }
+
+    // 1. Insert or Update the Minimum price config row
     await sql`
-      UPDATE configurations 
-      SET min_price = ${minPrice}, max_price = ${maxPrice} 
-      WHERE id = 1
+      INSERT INTO product_prices (package_size, price, updated_at) 
+      VALUES ('MIN', ${minPrice}, now()) 
+      ON CONFLICT (package_size) 
+      DO UPDATE SET price = ${minPrice}, updated_at = now()
     `;
 
-    return NextResponse.json({ success: true });
+    // 2. Insert or Update the Maximum price config row
+    await sql`
+      INSERT INTO product_prices (package_size, price, updated_at) 
+      VALUES ('MAX', ${maxPrice}, now()) 
+      ON CONFLICT (package_size) 
+      DO UPDATE SET price = ${maxPrice}, updated_at = now()
+    `;
+
+    return NextResponse.json({ success: true, min_price: minPrice, max_price: maxPrice });
   } catch (error) {
-    return NextResponse.json({ error: "Failed to persist configurations" }, { status: 500 });
+    console.error("PATCH prices configuration error:", error);
+    return NextResponse.json({ error: "Failed to persist configuration" }, { status: 500 });
   }
 }
