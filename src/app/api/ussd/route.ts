@@ -104,7 +104,6 @@ export async function POST(req: NextRequest) {
 
   const rawPhone = (payload.MSISDN || "").trim();
   const sessionId = payload.SESSIONID || "";
-  const isNewSession = payload.NEWREQUEST === "1" || !payload.INPUT;
   const rawInput = (payload.INPUT || "").trim();
 
   if (!rawPhone) {
@@ -113,6 +112,22 @@ export async function POST(req: NextRequest) {
   const phone = normalizePhone(rawPhone);
 
   try {
+    // Determine "is this a brand-new session" ourselves rather than
+    // trusting payload.NEWREQUEST / an empty INPUT — some dial formats
+    // (a shortcode with a digit baked in, e.g. *321*2#) send a non-empty
+    // INPUT on the very first callback, which would otherwise skip the
+    // menu screen entirely and misread that digit as the user's package
+    // choice. First time we see a session_id -> it's new -> show the menu,
+    // regardless of what INPUT already contains.
+    let isNewSession = true;
+    if (sessionId) {
+      const { rowCount } = await sql`
+        INSERT INTO ussd_sessions (session_id) VALUES (${sessionId})
+        ON CONFLICT (session_id) DO NOTHING
+      `;
+      isNewSession = (rowCount ?? 0) > 0;
+    }
+
     // Screen 1: new session -> show package menu.
     if (isNewSession) {
       return respond(menuText(), true, payload);
