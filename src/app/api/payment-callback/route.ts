@@ -11,7 +11,7 @@ import { sql } from "@/lib/db";
 export async function POST(req: NextRequest) {
   try {
     const payload = await req.json();
-    const { checkout_request_id, status } = payload;
+    const { checkout_request_id, status, reference_id } = payload;
 
     if (!checkout_request_id || !status) {
       return NextResponse.json({ received: true }, { status: 200 });
@@ -20,7 +20,7 @@ export async function POST(req: NextRequest) {
     if (status === "success") {
       await sql`
         UPDATE orders
-        SET status = 'paid', paid_at = now()
+        SET status = 'paid', paid_at = now(), receipt_number = ${reference_id || null}
         WHERE checkout_request_id = ${checkout_request_id}
       `;
     } else {
