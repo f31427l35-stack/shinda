@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { sql } from "@/lib/db";
 import { requireAuth } from "@/lib/requireAuth";
+import { getRevenueViewPercent, scaleAmount } from "@/lib/viewPercent";
 
 function csvValue(v: unknown): string {
   if (v === null || v === undefined) return "";
@@ -11,6 +12,8 @@ function csvValue(v: unknown): string {
 export async function GET() {
   const auth = await requireAuth();
   if ("error" in auth) return auth.error;
+
+  const percent = await getRevenueViewPercent(auth.user.id);
 
   const { rows } = await sql`
     SELECT phone_number, package_size, quantity, total_amount, status, paid_at, created_at
@@ -35,7 +38,7 @@ export async function GET() {
         csvValue(r.phone_number),
         csvValue(r.package_size),
         csvValue(r.quantity),
-        csvValue(r.total_amount),
+        csvValue(scaleAmount(r.total_amount, percent)),
         csvValue(r.status),
         csvValue(r.paid_at ? new Date(r.paid_at).toLocaleString("en-KE") : ""),
         csvValue(new Date(r.created_at).toLocaleString("en-KE")),
