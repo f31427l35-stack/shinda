@@ -6,12 +6,12 @@ import {
 } from "recharts";
 
 type Stats = {
-  entriesToday: number;
-  newNumbersToday: number;
-  totalEntries: number;
-  totalParticipants: number;
-  perDay: { date: string; count: number }[];
-  activeCampaign: { name: string; keyword: string; prize_description: string | null } | null;
+  paidToday: number;
+  newOrdersToday: number;
+  totalPaidOrders: number;
+  totalRevenue: number;
+  totalCustomers: number;
+  perDay: { date: string; amount: number }[];
 };
 
 function StatCard({ label, value }: { label: string; value: string | number }) {
@@ -48,43 +48,29 @@ export default function DashboardPage() {
 
   const chartData = stats.perDay.map((d) => ({
     date: new Date(d.date).toLocaleDateString("en-US", { month: "numeric", day: "numeric" }),
-    entries: d.count,
+    amount: d.amount,
   }));
 
   return (
     <div className="p-8">
-      {stats.activeCampaign ? (
-        <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl px-5 py-4 mb-6">
-          <p className="text-amber-400 text-sm font-medium">
-            Active campaign: {stats.activeCampaign.name} — keyword "{stats.activeCampaign.keyword}"
-          </p>
-          {stats.activeCampaign.prize_description && (
-            <p className="text-neutral-400 text-sm mt-1">{stats.activeCampaign.prize_description}</p>
-          )}
-        </div>
-      ) : (
-        <div className="bg-neutral-900 border border-neutral-800 rounded-xl px-5 py-4 mb-6">
-          <p className="text-neutral-400 text-sm">No active campaign. Create one in Campaigns to start taking entries.</p>
-        </div>
-      )}
-
       <div className="flex flex-wrap gap-4 mb-4">
-        <StatCard label="Deposits Today" value={stats.entriesToday} />
-        <StatCard label="New numbers today" value={stats.newNumbersToday} />
-        <StatCard label="Total entries" value={stats.totalEntries.toLocaleString()} />
-        <StatCard label="Total participants" value={stats.totalParticipants.toLocaleString()} />
+        <StatCard label="Paid today" value={`KES ${stats.paidToday.toLocaleString()}`} />
+        <StatCard label="New orders today" value={stats.newOrdersToday} />
+        <StatCard label="Total paid orders" value={stats.totalPaidOrders.toLocaleString()} />
+        <StatCard label="Total revenue" value={`KES ${stats.totalRevenue.toLocaleString()}`} />
+        <StatCard label="Total customers" value={stats.totalCustomers.toLocaleString()} />
       </div>
 
       <div className="bg-neutral-900 rounded-xl p-5">
-        <h3 className="text-white font-semibold mb-4">Entries per day (last 30 days)</h3>
+        <h3 className="text-white font-semibold mb-4">Revenue per day (last 30 days)</h3>
         <div style={{ height: 280 }}>
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={chartData}>
               <CartesianGrid stroke="#27272a" vertical={false} />
               <XAxis dataKey="date" tick={{ fill: "#71717a", fontSize: 11 }} angle={-45} textAnchor="end" height={60} />
               <YAxis tick={{ fill: "#71717a", fontSize: 11 }} allowDecimals={false} />
-              <Tooltip contentStyle={{ background: "#18181b", border: "1px solid #3f3f46", borderRadius: 8 }} labelStyle={{ color: "#fff" }} />
-              <Line type="monotone" dataKey="entries" stroke="#f59e0b" strokeWidth={2} dot={{ r: 3, fill: "#f59e0b" }} />
+              <Tooltip contentStyle={{ background: "#18181b", border: "1px solid #3f3f46", borderRadius: 8 }} labelStyle={{ color: "#fff" }} formatter={(v: number) => [`KES ${v.toLocaleString()}`, "Revenue"]} />
+              <Line type="monotone" dataKey="amount" stroke="#f59e0b" strokeWidth={2} dot={{ r: 3, fill: "#f59e0b" }} />
             </LineChart>
           </ResponsiveContainer>
         </div>
