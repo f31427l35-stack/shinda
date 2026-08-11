@@ -37,8 +37,8 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen bg-black flex items-center justify-center px-4">
       <div className="w-full max-w-sm">
-        <h1 className="text-white text-2xl font-semibold mb-1 text-center">Promo Draw Admin</h1>
-        <p className="text-neutral-500 text-sm text-center mb-8">Sign in to manage your USSD promotion</p>
+        <h1 className="text-white text-2xl font-semibold mb-1 text-center">Shinda Soap</h1>
+        <p className="text-neutral-500 text-sm text-center mb-8">Sign in to manage your orders</p>
         <form onSubmit={handleSubmit} className="bg-neutral-900 rounded-xl p-6 border border-neutral-800">
           {error && (
             <div className="bg-red-950 border border-red-900 text-red-400 text-sm rounded-lg px-3 py-2 mb-4">
