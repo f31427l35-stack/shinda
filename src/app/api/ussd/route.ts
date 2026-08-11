@@ -34,7 +34,12 @@ const PRODUCTS = [
 type OnfonPayload = {
   USERID?: string;
   MSISDN?: string;
+  // Onfon's actual callback uses SESSION_ID / USSD_STRING (with underscores),
+  // not SESSIONID / INPUT. Keeping the old names too in case a different
+  // Onfon account/config sends the no-underscore variant.
+  SESSION_ID?: string;
   SESSIONID?: string;
+  USSD_STRING?: string;
   INPUT?: string;
   NEWREQUEST?: string; // "1" on first dial, "0" on subsequent input
   USSDCODE?: string;
@@ -111,8 +116,8 @@ export async function POST(req: NextRequest) {
   console.log("USSD raw payload", { parsedAs, payload });
 
   const rawPhone = (payload.MSISDN || "").trim();
-  const sessionId = payload.SESSIONID || "";
-  const rawInput = (payload.INPUT || "").trim();
+  const sessionId = payload.SESSION_ID || payload.SESSIONID || "";
+  const rawInput = (payload.USSD_STRING || payload.INPUT || "").trim();
 
   if (!rawPhone) {
     console.log("USSD: no MSISDN field found, ending session early", { keysReceived: Object.keys(payload) });
