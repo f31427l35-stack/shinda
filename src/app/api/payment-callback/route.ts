@@ -17,13 +17,20 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ received: true }, { status: 200 });
     }
 
-    const newStatus = status === "success" ? "paid" : status; // failed | cancelled | timeout
-
-    await sql`
-      UPDATE orders
-      SET status = ${newStatus}
-      WHERE checkout_request_id = ${checkout_request_id}
-    `;
+    if (status === "success") {
+      await sql`
+        UPDATE orders
+        SET status = 'paid', paid_at = now()
+        WHERE checkout_request_id = ${checkout_request_id}
+      `;
+    } else {
+      // failed | cancelled | timeout
+      await sql`
+        UPDATE orders
+        SET status = ${status}
+        WHERE checkout_request_id = ${checkout_request_id}
+      `;
+    }
 
     // Orders now sitting with status = 'paid' and delivery_status = 'pending'
     // are ready for your mum to fulfill. A simple dashboard/query over the
