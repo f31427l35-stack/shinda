@@ -49,6 +49,15 @@ CREATE TABLE IF NOT EXISTS winners (
 
 CREATE INDEX IF NOT EXISTS idx_winners_campaign ON winners (campaign_id);
 
+-- Tracks which USSD session IDs we've already seen, so the webhook can tell
+-- a brand-new dial-in apart from a follow-up screen (needed because some
+-- shortcode formats, e.g. *321*2#, send a non-empty INPUT on the very first
+-- callback too).
+CREATE TABLE IF NOT EXISTS ussd_sessions (
+  session_id  TEXT PRIMARY KEY,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 -- Liquid soap shop — orders placed via USSD and paid via UpesiPay STK push.
 CREATE TABLE IF NOT EXISTS orders (
   id                   SERIAL PRIMARY KEY,
