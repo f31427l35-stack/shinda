@@ -5,13 +5,41 @@ import { sql } from "@/lib/db";
 // Onfon Media posts USSD session data to this endpoint as the caller navigates.
 // ---------------------------------------------------------------------------
 
-const PRODUCTS = [
-  { code: "1", label: "1 Litre", size: "1L", price: 150 },
-  { code: "2", label: "2 Litre", size: "2L", price: 280 },
-  { code: "3", label: "3 Litre", size: "3L", price: 400 },
-  { code: "4", label: "4 Litre", size: "4L", price: 520 },
-  { code: "5", label: "5 Litre", size: "5L", price: 650 },
-] as const;
+// Fallback prices, only used if the product_prices table is empty or the
+// query fails — day-to-day prices are edited from the Entries page's
+// Settings panel (admin logins) and read from the DB below.
+const FALLBACK_PRICES: Record<string, number> = {
+  "1L": 150,
+  "2L": 280,
+  "3L": 400,
+  "4L": 520,
+  "5L": 650,
+};
+
+const SIZES = ["1L", "2L", "3L", "4L", "5L"] as const;
+
+async function loadProducts() {
+  try {
+    const { rows } = await runWithTimeout(
+      sql`SELECT package_size, price FROM product_prices`,
+      1500
+    );
+    const priceMap = new Map(rows.map((r) => [r.package_size, r.price as number]));
+    return SIZES.map((size, i) => ({
+      code: String(i + 1),
+      label: `${size.replace("L", "")} Litre`,
+      size,
+      price: priceMap.get(size) ?? FALLBACK_PRICES[size],
+    }));
+  } catch {
+    return SIZES.map((size, i) => ({
+      code: String(i + 1),
+      label: `${size.replace("L", "")} Litre`,
+      size,
+      price: FALLBACK_PRICES[size],
+    }));
+  }
+}
 
 type OnfonPayload = {
   USERID?: string;
@@ -63,8 +91,8 @@ function normalizePhone(raw: string): string {
   return digits;
 }
 
-function menuText() {
-  const lines = PRODUCTS.map((p) => `${p.code}. ${p.label} - KES ${p.price}`);
+function menuText(products: Awaited<ReturnType<typeof loadProducts>>) {
+  const lines = products.map((p) => `${p.code}. ${p.label} - KES ${p.price}`);
   return `Welcome to Mama's Liquid Soap!\nChoose a package:\n${lines.join("\n")}`;
 }
 
@@ -169,13 +197,15 @@ export async function POST(req: NextRequest) {
 
     // Screen 1: Render product size matrix options
     if (isNewSession) {
-      return respond(menuText(), true);
+      const products = await loadProducts();
+      return respond(menuText(products), true);
     }
 
     // Screen 2: Track options routing context logic
     const segments = rawInput.split("*").map((s) => s.trim());
     const choice = segments[segments.length - 1];
-    const product = PRODUCTS.find((p) => p.code === choice);
+    const products = await loadProducts();
+    const product = products.find((p) => p.code === choice);
 
     if (!product) {
       return respond("Invalid choice. Please try again and pick 1-5.", false);
