@@ -4,12 +4,13 @@ import { useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import Link from "next/link";
 import {
-  LayoutDashboard, ListChecks, Trophy, Megaphone, UserCog, LogOut,
+  LayoutDashboard, ListChecks, Trophy, Megaphone, UserCog, LogOut, ShoppingBag,
 } from "lucide-react";
 import type { SessionUser } from "@/lib/auth";
 
 const nav = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/dashboard/orders", label: "Orders", icon: ShoppingBag },
   { href: "/dashboard/campaigns", label: "Campaigns", icon: Megaphone },
   { href: "/dashboard/entries", label: "Entries", icon: ListChecks },
   { href: "/dashboard/winners", label: "Winners", icon: Trophy },
