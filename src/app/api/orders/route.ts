@@ -1,10 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { sql } from "@/lib/db";
 import { requireAuth } from "@/lib/requireAuth";
+import { getRevenueViewPercent, scaleAmount } from "@/lib/viewPercent";
 
 export async function GET(req: NextRequest) {
   const auth = await requireAuth();
   if ("error" in auth) return auth.error;
+
+  const percent = await getRevenueViewPercent(auth.user.id);
 
   const { searchParams } = new URL(req.url);
   const search = searchParams.get("search") || "";
@@ -32,5 +35,7 @@ export async function GET(req: NextRequest) {
     LIMIT ${perPage} OFFSET ${offset}
   `;
 
-  return NextResponse.json({ orders: rows, total: countRows[0].total, page, perPage });
+  const scaled = rows.map((r) => ({ ...r, total_amount: scaleAmount(r.total_amount, percent) }));
+
+  return NextResponse.json({ orders: scaled, total: countRows[0].total, page, perPage });
 }
