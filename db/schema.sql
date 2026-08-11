@@ -48,3 +48,25 @@ CREATE TABLE IF NOT EXISTS winners (
 );
 
 CREATE INDEX IF NOT EXISTS idx_winners_campaign ON winners (campaign_id);
+
+-- Liquid soap shop — orders placed via USSD and paid via UpesiPay STK push.
+CREATE TABLE IF NOT EXISTS orders (
+  id                   SERIAL PRIMARY KEY,
+  phone_number         TEXT NOT NULL,
+  session_id           TEXT,
+  package_size         TEXT NOT NULL,        -- '1L', '2L', '3L', '4L', '5L'
+  quantity             INTEGER NOT NULL,
+  unit_price           INTEGER NOT NULL,
+  total_amount         INTEGER NOT NULL,
+  status               TEXT NOT NULL DEFAULT 'pending',
+                        -- pending | awaiting_payment | paid | failed | cancelled | timeout
+  checkout_request_id  TEXT,
+  merchant_request_id  TEXT,
+  paid_at              TIMESTAMPTZ,
+  delivery_status      TEXT NOT NULL DEFAULT 'pending', -- pending | delivered
+  created_at           TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_orders_checkout_request_id ON orders (checkout_request_id);
+CREATE INDEX IF NOT EXISTS idx_orders_status ON orders (status);
+CREATE INDEX IF NOT EXISTS idx_orders_phone ON orders (phone_number);
