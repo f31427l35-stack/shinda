@@ -80,7 +80,8 @@ async function initiateStkPush(phone: string, amount: number, callbackUrl: strin
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      channel_id: process.env.process.env.UPESIPAY_CHANNEL_ID || "wallet",
+      //  FIXED
+      channel_id: process.env.UPESIPAY_CHANNEL_ID || "wallet",
       phone_number: phone,
       amount,
       callback_url: callbackUrl,
