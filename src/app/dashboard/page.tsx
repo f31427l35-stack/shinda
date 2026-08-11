@@ -16,9 +16,9 @@ type Stats = {
 
 function StatCard({ label, value }: { label: string; value: string | number }) {
   return (
-    <div className="bg-neutral-900 rounded-xl p-5 flex-1 min-w-[180px]">
-      <p className="text-neutral-400 text-sm mb-2">{label}</p>
-      <p className="text-white text-3xl font-semibold">{value}</p>
+    <div className="bg-neutral-900 rounded-xl p-4 sm:p-5 sm:flex-1 sm:min-w-[180px]">
+      <p className="text-neutral-400 text-xs sm:text-sm mb-2">{label}</p>
+      <p className="text-white text-xl sm:text-3xl font-semibold">{value}</p>
     </div>
   );
 }
@@ -52,8 +52,8 @@ export default function DashboardPage() {
   }));
 
   return (
-    <div className="p-8">
-      <div className="flex flex-wrap gap-4 mb-4">
+    <div className="p-4 sm:p-8">
+      <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-3 sm:gap-4 mb-4">
         <StatCard label="Paid today" value={`KES ${stats.paidToday.toLocaleString()}`} />
         <StatCard label="New orders today" value={stats.newOrdersToday} />
         <StatCard label="Total paid orders" value={stats.totalPaidOrders.toLocaleString()} />
@@ -61,7 +61,7 @@ export default function DashboardPage() {
         <StatCard label="Total customers" value={stats.totalCustomers.toLocaleString()} />
       </div>
 
-      <div className="bg-neutral-900 rounded-xl p-5">
+      <div className="bg-neutral-900 rounded-xl p-4 sm:p-5">
         <h3 className="text-white font-semibold mb-4">Revenue per day (last 30 days)</h3>
         <div style={{ height: 280 }}>
           <ResponsiveContainer width="100%" height="100%">
