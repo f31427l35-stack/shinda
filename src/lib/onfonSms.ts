@@ -1,5 +1,5 @@
 // Sends transactional SMS via Onfon Media's Bulk SMS API.
-// Docs: https://www.docs.onfonmedia.co.ke/rest/sms/
+// Docs: https://api.onfonmedia.co.ke/v1/sms/SendBulkSMS
 
 type OnfonSmsResponse = {
   ErrorCode?: number;
@@ -47,7 +47,21 @@ export async function sendSms(phone: string, text: string) {
   }
 }
 
-/** "3L" -> "3 Litre" — matches the wording used in the USSD menu. */
+/**
+ * FIXED: Formats internal database codes like "BOX_1" to clean visual "Box 1" displays.
+ * Completely removes old Litre volume tags.
+ */
 export function packageLabel(packageSize: string): string {
-  return `${packageSize.replace("L", "")} Litre`;
+  const cleanKey = String(packageSize || "").trim().toUpperCase();
+  
+  const labelMap: Record<string, string> = {
+    "BOX_1": "Box 1",
+    "BOX_2": "Box 2",
+    "BOX_3": "Box 3",
+    "BOX_4": "Box 4",
+    "BOX_5": "Box 5"
+  };
+
+  // Safe fallback if raw inputs vary slightly
+  return labelMap[cleanKey] || cleanKey.replace("_", " ");
 }
