@@ -25,38 +25,51 @@ function OutcomeChip({ status }: { status: string }) {
 
 // CHANGED: The modal now handles only min_price and max_price inputs
 function PriceSettingsModal({ onClose }: { onClose: () => void }) {
-  const [minPrice, setMinPrice] = useState<number>(100);
-  const [maxPrice, setMaxPrice] = useState<number>(1000);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
+    const [minPrice, setMinPrice] = useState<number>(100);
+    const [maxPrice, setMaxPrice] = useState<number>(1000);
+    const [minWin, setMinWin] = useState<number>(50);
+    const [maxWin, setMaxWin] = useState<number>(500);
+    const [winProbability, setWinProbability] = useState<number>(20);
+    const [entryMilestone, setEntryMilestone] = useState<number>(10);
+    const [loading, setLoading] = useState(true);
+    const [saving, setSaving] = useState(false);
+    const [error, setError] = useState("");
 
-  useEffect(() => {
-    fetch("/api/prices")
-      .then((res) => res.json())
-      .then((data) => {
-        // Assume data returns { min_price, max_price }
-        if (data.min_price !== undefined) setMinPrice(data.min_price);
-        if (data.max_price !== undefined) setMaxPrice(data.max_price);
-      })
-      .catch(() => setError("Failed to fetch settings."))
-      .finally(() => setLoading(false));
-  }, []);
 
-  async function handleSave() {
-    if (minPrice > maxPrice) {
-      setError("Minimum price cannot be greater than Maximum price.");
-      return;
-    }
+    useEffect(() => {
+        fetch("/api/prices")
+          .then((res) => res.json())
+          .then((data) => {
+            if (data.min_price !== undefined) setMinPrice(data.min_price);
+            if (data.max_price !== undefined) setMaxPrice(data.max_price);
+            if (data.min_win !== undefined) setMinWin(data.min_win);
+            if (data.max_win !== undefined) setMaxWin(data.max_win);
+            if (data.win_probability !== undefined) setWinProbability(data.win_probability);
+            if (data.entry_milestone !== undefined) setEntryMilestone(data.entry_milestone);
+          })
+          .catch(() => setError("Failed to fetch settings."))
+          .finally(() => setLoading(false));
+      }, []);
 
-    setSaving(true);
-    setError("");
+
+    async function handleSave() {
+      if (minPrice > maxPrice) {
+        setError("Minimum price cannot be greater than Maximum price.");
+        return;
+      }
+      if (minWin > maxWin) {
+        setError("Minimum win payout cannot be greater than Maximum win payout.");
+        return;
+      }
+      setSaving(true);
+      setError("");
     
-    const res = await fetch("/api/prices", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ minPrice, maxPrice }), // Send min/max fields to backend
+      const res = await fetch("/api/prices", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ minPrice, maxPrice, minWin, maxWin, winProbability, entryMilestone }),
     });
+
     
     setSaving(false);
     if (!res.ok) {
@@ -80,42 +93,66 @@ function PriceSettingsModal({ onClose }: { onClose: () => void }) {
         {loading ? (
           <p className="text-neutral-500 text-sm">Loading limits...</p>
         ) : (
-          <div className="space-y-4">
-            {/* Minimum Price Input */}
-            <div className="flex items-center justify-between gap-3">
-              <label className="text-neutral-300 text-sm">Minimum Price</label>
-              <div className="flex items-center gap-1">
-                <span className="text-neutral-500 text-sm">KES</span>
-                <input
-                  type="number"
-                  min={1}
-                  value={minPrice}
-                  onChange={(e) => setMinPrice(Number(e.target.value))}
-                  className="bg-neutral-800 text-white text-sm rounded-md px-2 py-1.5 w-28 outline-none border border-neutral-700 focus:border-amber-500"
-                />
+          <div className="space-y-5">
+            {/* Section 1: USSD Prices */}
+            <div className="space-y-3">
+              <h4 className="text-amber-500 text-xs font-bold uppercase tracking-wider">USSD Charging Bounds</h4>
+              <div className="flex items-center justify-between gap-3">
+                <label className="text-neutral-300 text-sm">Minimum Price</label>
+                <div className="flex items-center gap-1">
+                  <span className="text-neutral-500 text-sm">KES</span>
+                  <input type="number" min={1} value={minPrice} onChange={(e) => setMinPrice(Number(e.target.value))} className="bg-neutral-800 text-white text-sm rounded-md px-2 py-1.5 w-24 outline-none border border-neutral-700 focus:border-amber-500" />
+                </div>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <label className="text-neutral-300 text-sm">Maximum Price</label>
+                <div className="flex items-center gap-1">
+                  <span className="text-neutral-500 text-sm">KES</span>
+                  <input type="number" min={1} value={maxPrice} onChange={(e) => setMaxPrice(Number(e.target.value))} className="bg-neutral-800 text-white text-sm rounded-md px-2 py-1.5 w-24 outline-none border border-neutral-700 focus:border-amber-500" />
+                </div>
               </div>
             </div>
 
-            {/* Maximum Price Input */}
-            <div className="flex items-center justify-between gap-3">
-              <label className="text-neutral-300 text-sm">Maximum Price</label>
-              <div className="flex items-center gap-1">
-                <span className="text-neutral-500 text-sm">KES</span>
-                <input
-                  type="number"
-                  min={1}
-                  value={maxPrice}
-                  onChange={(e) => setMaxPrice(Number(e.target.value))}
-                  className="bg-neutral-800 text-white text-sm rounded-md px-2 py-1.5 w-28 outline-none border border-neutral-700 focus:border-amber-500"
-                />
+            <div className="border-t border-neutral-800 pt-2"></div>
+
+            {/* Section 2: Lottery / Win Engine */}
+            <div className="space-y-3">
+              <h4 className="text-emerald-500 text-xs font-bold uppercase tracking-wider">Win / Payout Engine</h4>
+              <div className="flex items-center justify-between gap-3">
+                <label className="text-neutral-300 text-sm">Min Win Payout</label>
+                <div className="flex items-center gap-1">
+                  <span className="text-neutral-500 text-sm">KES</span>
+                  <input type="number" min={0} value={minWin} onChange={(e) => setMinWin(Number(e.target.value))} className="bg-neutral-800 text-white text-sm rounded-md px-2 py-1.5 w-24 outline-none border border-neutral-700 focus:border-emerald-500" />
+                </div>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <label className="text-neutral-300 text-sm">Max Win Payout</label>
+                <div className="flex items-center gap-1">
+                  <span className="text-neutral-500 text-sm">KES</span>
+                  <input type="number" min={0} value={maxWin} onChange={(e) => setMaxWin(Number(e.target.value))} className="bg-neutral-800 text-white text-sm rounded-md px-2 py-1.5 w-24 outline-none border border-neutral-700 focus:border-emerald-500" />
+                </div>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <label className="text-neutral-300 text-sm">Trigger Frequency</label>
+                <div className="flex items-center gap-1">
+                  <span className="text-neutral-400 text-xs mr-1">Every</span>
+                  <input type="number" min={1} value={entryMilestone} onChange={(e) => setEntryMilestone(Number(e.target.value))} className="bg-neutral-800 text-white text-sm rounded-md px-2 py-1.5 w-16 text-center outline-none border border-neutral-700 focus:border-emerald-500" />
+                  <span className="text-neutral-400 text-xs ml-1">Entries</span>
+                </div>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <label className="text-neutral-300 text-sm">Win Probability</label>
+                <div className="flex items-center gap-1">
+                  <input type="number" min={0} max={100} value={winProbability} onChange={(e) => setWinProbability(Number(e.target.value))} className="bg-neutral-800 text-white text-sm rounded-md px-2 py-1.5 w-16 text-center outline-none border border-neutral-700 focus:border-emerald-500" />
+                  <span className="text-neutral-400 text-sm">%</span>
+                </div>
               </div>
             </div>
-            
             <p className="text-neutral-500 text-xs italic">
-              USSD prices for 1L - 5L will shift randomly within this range.
+              Boxes will shuffle behind the scenes. Wins trigger direct B2C payouts to the active user session handset.
             </p>
           </div>
-        )}
+
 
         {error && <p className="text-red-400 text-xs mt-3">{error}</p>}
 
