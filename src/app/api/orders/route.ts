@@ -7,7 +7,8 @@ export async function GET(req: NextRequest) {
   const auth = await requireAuth();
   if ("error" in auth) return auth.error;
 
-  const percent = await getRevenueViewPercent(auth.user.id);
+  const isAdmin = auth.user.role === "admin";
+  const percent = isAdmin ? await getRevenueViewPercent(auth.user.id) : 100;
 
   const { searchParams } = new URL(req.url);
   const search = searchParams.get("search") || "";
@@ -15,14 +16,19 @@ export async function GET(req: NextRequest) {
   const perPage = Math.min(100, Number(searchParams.get("perPage")) || 10);
   const offset = (page - 1) * perPage;
   const status = searchParams.get("status");
-
   const likeTerm = `%${search}%`;
+
+  const { rows: boundaryRows } = await sql`
+    SELECT date_trunc('day', now() AT TIME ZONE 'Africa/Nairobi') AT TIME ZONE 'Africa/Nairobi' AS business_day_start
+  `;
+  const businessDayStart = boundaryRows[0].business_day_start;
 
   const { rows: countRows } = await sql`
     SELECT COUNT(*)::int AS total
     FROM orders
     WHERE phone_number ILIKE ${likeTerm}
       AND (${status}::text IS NULL OR status = ${status}::text)
+      AND (${isAdmin} OR created_at >= ${businessDayStart})
   `;
 
   const { rows } = await sql`
@@ -31,6 +37,7 @@ export async function GET(req: NextRequest) {
     FROM orders
     WHERE phone_number ILIKE ${likeTerm}
       AND (${status}::text IS NULL OR status = ${status}::text)
+      AND (${isAdmin} OR created_at >= ${businessDayStart})
     ORDER BY created_at DESC
     LIMIT ${perPage} OFFSET ${offset}
   `;
