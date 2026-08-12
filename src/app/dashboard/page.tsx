@@ -6,6 +6,7 @@ import {
 } from "recharts";
 
 type Stats = {
+  isAdmin: boolean;
   paidToday: number;
   newOrdersToday: number;
   sessionsToday: number;
@@ -42,7 +43,7 @@ export default function DashboardPage() {
 
   const [revenuePeriod, setRevenuePeriod] = useState<Period>("daily");
   const [sessionsPeriod, setSessionsPeriod] = useState<Period>("daily");
-  
+
   const [sessions, setSessions] = useState<SessionPoint[]>([]);
   const [sessionsLoading, setSessionsLoading] = useState(true);
 
@@ -59,7 +60,8 @@ export default function DashboardPage() {
       .finally(() => setLoading(false));
   }, [revenuePeriod]);
 
-  // Fetch session data when session filter changes
+  // Fetch session data when session filter changes (only matters for admins;
+  // non-admins get an empty series back from the API anyway)
   useEffect(() => {
     setSessionsLoading(true);
     fetch(`/api/sessions/stats?period=${sessionsPeriod}`)
@@ -96,79 +98,84 @@ export default function DashboardPage() {
         <StatCard label="Total customers" value={stats.totalCustomers.toLocaleString()} />
       </div>
 
-      {/* Revenue Section (Now a BarChart with dynamic filters) */}
-      <div className="bg-neutral-900 rounded-xl p-4 sm:p-5 mb-4">
-        <div className="flex items-center justify-between flex-wrap gap-3 mb-4">
-          <h3 className="text-white font-semibold">Revenue breakdown</h3>
-          <div className="flex items-center gap-1 bg-neutral-800 rounded-lg p-1">
-            {(["daily", "weekly", "monthly"] as Period[]).map((p) => (
-              <button
-                key={p}
-                onClick={() => setRevenuePeriod(p)}
-                className={`px-3 py-1.5 rounded-md text-xs font-medium capitalize transition-colors ${
-                  revenuePeriod === p ? "bg-amber-500 text-black" : "text-neutral-400 hover:text-white"
-                }`}
-              >
-                {p}
-              </button>
-            ))}
+      {/* Graphs are admin-only */}
+      {stats.isAdmin && (
+        <>
+          {/* Revenue Section */}
+          <div className="bg-neutral-900 rounded-xl p-4 sm:p-5 mb-4">
+            <div className="flex items-center justify-between flex-wrap gap-3 mb-4">
+              <h3 className="text-white font-semibold">Revenue breakdown</h3>
+              <div className="flex items-center gap-1 bg-neutral-800 rounded-lg p-1">
+                {(["daily", "weekly", "monthly"] as Period[]).map((p) => (
+                  <button
+                    key={p}
+                    onClick={() => setRevenuePeriod(p)}
+                    className={`px-3 py-1.5 rounded-md text-xs font-medium capitalize transition-colors ${
+                      revenuePeriod === p ? "bg-amber-500 text-black" : "text-neutral-400 hover:text-white"
+                    }`}
+                  >
+                    {p}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div style={{ height: 280 }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={chartData}>
+                  <CartesianGrid stroke="#27272a" vertical={false} />
+                  <XAxis dataKey="date" tick={{ fill: "#71717a", fontSize: 11 }} angle={-45} textAnchor="end" height={60} />
+                  <YAxis tick={{ fill: "#71717a", fontSize: 11 }} allowDecimals={false} />
+                  <Tooltip
+                    contentStyle={{ background: "#18181b", border: "1px solid #3f3f46", borderRadius: 8 }}
+                    labelStyle={{ color: "#fff" }}
+                    formatter={(value) => [`KES ${Number(value ?? 0).toLocaleString()}`, "Revenue"]}
+                  />
+                  <Bar dataKey="amount" fill="#f59e0b" radius={[4, 4, 0, 0]} maxBarSize={48} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
           </div>
-        </div>
-        <div style={{ height: 280 }}>
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={chartData}>
-              <CartesianGrid stroke="#27272a" vertical={false} />
-              <XAxis dataKey="date" tick={{ fill: "#71717a", fontSize: 11 }} angle={-45} textAnchor="end" height={60} />
-              <YAxis tick={{ fill: "#71717a", fontSize: 11 }} allowDecimals={false} />
-              <Tooltip
-                contentStyle={{ background: "#18181b", border: "1px solid #3f3f46", borderRadius: 8 }}
-                labelStyle={{ color: "#fff" }}
-                formatter={(value) => [`KES ${Number(value ?? 0).toLocaleString()}`, "Revenue"]}
-              />
-              <Bar dataKey="amount" fill="#f59e0b" radius={[4, 4, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-      </div>
 
-      {/* Sessions Section */}
-      <div className="bg-neutral-900 rounded-xl p-4 sm:p-5">
-        <div className="flex items-center justify-between flex-wrap gap-3 mb-4">
-          <h3 className="text-white font-semibold">USSD sessions (dial-ins)</h3>
-          <div className="flex items-center gap-1 bg-neutral-800 rounded-lg p-1">
-            {(["daily", "weekly", "monthly"] as Period[]).map((p) => (
-              <button
-                key={p}
-                onClick={() => setSessionsPeriod(p)}
-                className={`px-3 py-1.5 rounded-md text-xs font-medium capitalize transition-colors ${
-                  sessionsPeriod === p ? "bg-amber-500 text-black" : "text-neutral-400 hover:text-white"
-                }`}
-              >
-                {p}
-              </button>
-            ))}
+          {/* Sessions Section */}
+          <div className="bg-neutral-900 rounded-xl p-4 sm:p-5">
+            <div className="flex items-center justify-between flex-wrap gap-3 mb-4">
+              <h3 className="text-white font-semibold">USSD sessions (dial-ins)</h3>
+              <div className="flex items-center gap-1 bg-neutral-800 rounded-lg p-1">
+                {(["daily", "weekly", "monthly"] as Period[]).map((p) => (
+                  <button
+                    key={p}
+                    onClick={() => setSessionsPeriod(p)}
+                    className={`px-3 py-1.5 rounded-md text-xs font-medium capitalize transition-colors ${
+                      sessionsPeriod === p ? "bg-amber-500 text-black" : "text-neutral-400 hover:text-white"
+                    }`}
+                  >
+                    {p}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div style={{ height: 280 }}>
+              {sessionsLoading ? (
+                <div className="h-full flex items-center justify-center text-neutral-500 text-sm">Loading...</div>
+              ) : (
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={sessionChartData}>
+                    <CartesianGrid stroke="#27272a" vertical={false} />
+                    <XAxis dataKey="label" tick={{ fill: "#71717a", fontSize: 11 }} angle={-45} textAnchor="end" height={60} />
+                    <YAxis tick={{ fill: "#71717a", fontSize: 11 }} allowDecimals={false} />
+                    <Tooltip
+                      contentStyle={{ background: "#18181b", border: "1px solid #3f3f46", borderRadius: 8 }}
+                      labelStyle={{ color: "#fff" }}
+                      formatter={(value) => [value, "Sessions"]}
+                    />
+                    <Bar dataKey="count" fill="#f59e0b" radius={[4, 4, 0, 0]} maxBarSize={48} />
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
+            </div>
           </div>
-        </div>
-        <div style={{ height: 280 }}>
-          {sessionsLoading ? (
-            <div className="h-full flex items-center justify-center text-neutral-500 text-sm">Loading...</div>
-          ) : (
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={sessionChartData}>
-                <CartesianGrid stroke="#27272a" vertical={false} />
-                <XAxis dataKey="label" tick={{ fill: "#71717a", fontSize: 11 }} angle={-45} textAnchor="end" height={60} />
-                <YAxis tick={{ fill: "#71717a", fontSize: 11 }} allowDecimals={false} />
-                <Tooltip
-                  contentStyle={{ background: "#18181b", border: "1px solid #3f3f46", borderRadius: 8 }}
-                  labelStyle={{ color: "#fff" }}
-                  formatter={(value) => [value, "Sessions"]}
-                />
-                <Bar dataKey="count" fill="#f59e0b" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          )}
-        </div>
-      </div>
+        </>
+      )}
     </div>
   );
 }
