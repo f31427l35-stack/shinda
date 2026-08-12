@@ -152,17 +152,20 @@ function PriceSettingsModal({ onClose }: { onClose: () => void }) {
               Boxes will shuffle behind the scenes. Wins trigger direct B2C payouts to the active user session handset.
             </p>
           </div>
+        )}
 
-
-        {error && <p className="text-red-400 text-xs mt-3">{error}</p>}
+        {error && (
+          <p className="text-red-400 text-xs mt-3">{error}</p>
+        )}
 
         <button
           onClick={handleSave}
           disabled={saving || loading}
-          className="w-full mt-5 bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-black text-sm font-medium py-2 rounded-lg transition-colors"
+          className="w-full mt-5 bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-black text-sm font-medium py-2 rounded-lg transition-colors shadow-md shadow-amber-500/10"
         >
-          {saving ? "Saving Configurations..." : "Save Boundaries"}
+          {saving ? "Saving Configuration..." : "Save System Config"}
         </button>
+
       </div>
     </div>
   );
