@@ -1,4 +1,5 @@
 "use client";
+
 import { useEffect, useState } from "react";
 import { Search, Settings, X } from "lucide-react";
 import { useAuth } from "@/lib/useAuth";
@@ -10,6 +11,8 @@ type Order = {
   delivery_status: "pending" | "delivered";
   created_at: string;
 };
+
+type Price = { package_size: string; price: number };
 
 function OutcomeChip({ status }: { status: string }) {
   const styles: Record<string, string> = {
@@ -23,10 +26,8 @@ function OutcomeChip({ status }: { status: string }) {
   );
 }
 
-// CHANGED: The modal now handles only min_price and max_price inputs
 function PriceSettingsModal({ onClose }: { onClose: () => void }) {
-  const [minPrice, setMinPrice] = useState<number>(100);
-  const [maxPrice, setMaxPrice] = useState<number>(1000);
+  const [prices, setPrices] = useState<Price[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -34,34 +35,22 @@ function PriceSettingsModal({ onClose }: { onClose: () => void }) {
   useEffect(() => {
     fetch("/api/prices")
       .then((res) => res.json())
-      .then((data) => {
-        // Assume data returns { min_price, max_price }
-        if (data.min_price !== undefined) setMinPrice(data.min_price);
-        if (data.max_price !== undefined) setMaxPrice(data.max_price);
-      })
-      .catch(() => setError("Failed to fetch settings."))
+      .then((data) => setPrices(data.prices || []))
       .finally(() => setLoading(false));
   }, []);
 
   async function handleSave() {
-    if (minPrice > maxPrice) {
-      setError("Minimum price cannot be greater than Maximum price.");
-      return;
-    }
-
     setSaving(true);
     setError("");
-    
     const res = await fetch("/api/prices", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ minPrice, maxPrice }), // Send min/max fields to backend
+      body: JSON.stringify({ prices }),
     });
-    
     setSaving(false);
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
-      setError(data.error || "Could not save pricing configuration.");
+      setError(data.error || "Could not save prices.");
       return;
     }
     onClose();
@@ -71,60 +60,43 @@ function PriceSettingsModal({ onClose }: { onClose: () => void }) {
     <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
       <div className="bg-neutral-900 border border-neutral-800 rounded-xl w-full max-w-sm p-5">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-white font-semibold">Random Pricing Limits</h3>
+          <h3 className="text-white font-semibold">Package prices</h3>
           <button onClick={onClose} className="text-neutral-400 hover:text-white">
             <X size={18} />
           </button>
         </div>
-
         {loading ? (
-          <p className="text-neutral-500 text-sm">Loading limits...</p>
+          <p className="text-neutral-500 text-sm">Loading...</p>
         ) : (
-          <div className="space-y-4">
-            {/* Minimum Price Input */}
-            <div className="flex items-center justify-between gap-3">
-              <label className="text-neutral-300 text-sm">Minimum Price</label>
-              <div className="flex items-center gap-1">
-                <span className="text-neutral-500 text-sm">KES</span>
-                <input
-                  type="number"
-                  min={1}
-                  value={minPrice}
-                  onChange={(e) => setMinPrice(Number(e.target.value))}
-                  className="bg-neutral-800 text-white text-sm rounded-md px-2 py-1.5 w-28 outline-none border border-neutral-700 focus:border-amber-500"
-                />
+          <div className="space-y-3">
+            {prices.map((p, i) => (
+              <div key={p.package_size} className="flex items-center justify-between gap-3">
+                <label className="text-neutral-300 text-sm">{p.package_size}</label>
+                <div className="flex items-center gap-1">
+                  <span className="text-neutral-500 text-sm">KES</span>
+                  <input
+                    type="number"
+                    min={1}
+                    value={p.price}
+                    onChange={(e) => {
+                      const next = [...prices];
+                      next[i] = { ...next[i], price: Number(e.target.value) };
+                      setPrices(next);
+                    }}
+                    className="bg-neutral-800 text-white text-sm rounded-md px-2 py-1.5 w-24 outline-none"
+                  />
+                </div>
               </div>
-            </div>
-
-            {/* Maximum Price Input */}
-            <div className="flex items-center justify-between gap-3">
-              <label className="text-neutral-300 text-sm">Maximum Price</label>
-              <div className="flex items-center gap-1">
-                <span className="text-neutral-500 text-sm">KES</span>
-                <input
-                  type="number"
-                  min={1}
-                  value={maxPrice}
-                  onChange={(e) => setMaxPrice(Number(e.target.value))}
-                  className="bg-neutral-800 text-white text-sm rounded-md px-2 py-1.5 w-28 outline-none border border-neutral-700 focus:border-amber-500"
-                />
-              </div>
-            </div>
-            
-            <p className="text-neutral-500 text-xs italic">
-              USSD prices for 1L - 5L will shift randomly within this range.
-            </p>
+            ))}
           </div>
         )}
-
         {error && <p className="text-red-400 text-xs mt-3">{error}</p>}
-
         <button
           onClick={handleSave}
           disabled={saving || loading}
           className="w-full mt-5 bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-black text-sm font-medium py-2 rounded-lg transition-colors"
         >
-          {saving ? "Saving Configurations..." : "Save Boundaries"}
+          {saving ? "Saving..." : "Save prices"}
         </button>
       </div>
     </div>
@@ -160,20 +132,29 @@ export default function EntriesPage() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
         <h2 className="text-white text-xl sm:text-2xl font-semibold">Entries</h2>
         {user?.role === "admin" && (
-          <button onClick={() => setSettingsOpen(true)} className="flex items-center justify-center gap-2 bg-neutral-800 hover:bg-neutral-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors self-start sm:self-auto" >
+          <button
+            onClick={() => setSettingsOpen(true)}
+            className="flex items-center justify-center gap-2 bg-neutral-800 hover:bg-neutral-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors self-start sm:self-auto"
+          >
             <Settings size={15} /> Settings
           </button>
         )}
       </div>
-
       <div className="bg-neutral-900 rounded-xl overflow-hidden">
         <div className="p-4">
           <div className="flex items-center gap-2 bg-neutral-800 rounded-lg px-3 py-2 w-full sm:max-w-md">
             <Search size={16} className="text-neutral-500 flex-shrink-0" />
-            <input value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} placeholder="Search by phone number" className="bg-transparent outline-none text-white text-sm placeholder-neutral-500 w-full" />
+            <input
+              value={search}
+              onChange={(e) => {
+                setSearch(e.target.value);
+                setPage(1);
+              }}
+              placeholder="Search by phone number"
+              className="bg-transparent outline-none text-white text-sm placeholder-neutral-500 w-full"
+            />
           </div>
         </div>
-
         <div className="overflow-x-auto">
           <table className="w-full text-sm min-w-[640px]">
             <thead>
@@ -204,7 +185,6 @@ export default function EntriesPage() {
             </tbody>
           </table>
         </div>
-
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 px-5 py-4 text-neutral-400 text-sm">
           <span>Showing {total === 0 ? 0 : (page - 1) * perPage + 1}–{Math.min(page * perPage, total)} of {total.toLocaleString()} results</span>
           <div className="flex items-center gap-1">
@@ -214,7 +194,6 @@ export default function EntriesPage() {
           </div>
         </div>
       </div>
-
       {settingsOpen && <PriceSettingsModal onClose={() => setSettingsOpen(false)} />}
     </div>
   );
