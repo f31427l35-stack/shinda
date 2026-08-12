@@ -14,11 +14,11 @@ export async function GET(req: NextRequest) {
     ? searchParams.get("period")
     : "daily";
 
-  // 1. Calculate the 2:00 AM EAT boundary for today's data cards
-  const { rows: boundaryRows } = await sql`
-    SELECT (date_trunc('day', now() AT TIME ZONE 'Africa/Nairobi' - interval '2 hours') + interval '2 hours') AT TIME ZONE 'Africa/Nairobi' AS business_day_start
-  `;
-  const businessDayStart = boundaryRows[0].business_day_start;
+  // 1. Calculate midnight (00:00) EAT boundary for today's data cards
+    const { rows: boundaryRows } = await sql`
+      SELECT date_trunc('day', now() AT TIME ZONE 'Africa/Nairobi') AT TIME ZONE 'Africa/Nairobi' AS business_day_start
+    `;
+    const businessDayStart = boundaryRows[0].business_day_start;
 
   // 2. Today's stats: Resets to zero precisely at 2:00 AM EAT
   const { rows: paidTodayRows } = await sql`
