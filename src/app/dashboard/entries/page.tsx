@@ -8,7 +8,7 @@ type Order = {
   phone_number: string;
   package_size: string;
   delivery_status: "pending" | "delivered";
-  created_at: string;e
+  created_at: string;
 };
 
 function OutcomeChip({ status }: { status: string }) {
