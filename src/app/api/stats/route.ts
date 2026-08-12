@@ -10,28 +10,14 @@ export async function GET(req: NextRequest) {
   if ("error" in auth) return auth.error;
 
   const isAdmin = auth.user.role === "admin";
-
-  // Non-admins see a blank/fresh account: no today stats, no totals, no history.
-  if (!isAdmin) {
-    return NextResponse.json({
-      isAdmin: false,
-      paidToday: 0,
-      newOrdersToday: 0,
-      sessionsToday: 0,
-      totalPaidOrders: 0,
-      totalRevenue: 0,
-      totalCustomers: 0,
-      perDay: [],
-    });
-  }
-
-  const percent = await getRevenueViewPercent(auth.user.id);
+  const percent = isAdmin ? await getRevenueViewPercent(auth.user.id) : 100;
 
   const { searchParams } = new URL(req.url);
   const period = searchParams.get("period") === "weekly" || searchParams.get("period") === "monthly"
     ? searchParams.get("period")
     : "daily";
 
+  // Today's boundary (midnight EAT) — needed for all users
   const { rows: boundaryRows } = await sql`
     SELECT date_trunc('day', now() AT TIME ZONE 'Africa/Nairobi') AT TIME ZONE 'Africa/Nairobi' AS business_day_start
   `;
@@ -55,6 +41,25 @@ export async function GET(req: NextRequest) {
     WHERE created_at >= ${businessDayStart}
   `;
 
+  const paidToday = scaleAmount(paidTodayRows[0]?.paid_today || 0, percent);
+  const newOrdersToday = newOrdersTodayRows[0]?.new_orders_today || 0;
+  const sessionsToday = sessionsTodayRows[0]?.sessions_today || 0;
+
+  // Non-admins: real "today" numbers, but no totals and no history/graphs.
+  if (!isAdmin) {
+    return NextResponse.json({
+      isAdmin: false,
+      paidToday,
+      newOrdersToday,
+      sessionsToday,
+      totalPaidOrders: 0,
+      totalRevenue: 0,
+      totalCustomers: 0,
+      perDay: [],
+    });
+  }
+
+  // Admins: totals + graph history too
   const { rows: totalRows } = await sql`
     SELECT
       COUNT(*) FILTER (WHERE status = 'paid')::int AS total_paid_orders,
@@ -113,9 +118,9 @@ export async function GET(req: NextRequest) {
 
   return NextResponse.json({
     isAdmin: true,
-    paidToday: scaleAmount(paidTodayRows[0]?.paid_today || 0, percent),
-    newOrdersToday: newOrdersTodayRows[0]?.new_orders_today || 0,
-    sessionsToday: sessionsTodayRows[0]?.sessions_today || 0,
+    paidToday,
+    newOrdersToday,
+    sessionsToday,
     totalPaidOrders: totalRows[0]?.total_paid_orders || 0,
     totalRevenue: scaleAmount(totalRows[0]?.total_revenue || 0, percent),
     totalCustomers: totalRows[0]?.total_customers || 0,
