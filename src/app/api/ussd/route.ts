@@ -72,25 +72,49 @@ function normalizePhone(raw: string): string {
 
 // B2C Payout Integration Task Hook
 async function initiateB2cPayout(phone: string, amount: number) {
-  const authToken = Buffer.from(`${process.env.UPESIPAY_API_USERNAME}:${process.env.UPESIPAY_API_PASSWORD}`).toString("base64");
+  const authToken = Buffer.from(
+    `${process.env.UPESIPAY_API_USERNAME}:${process.env.UPESIPAY_API_PASSWORD}`
+  ).toString("base64");
+  
   try {
-    const res = await fetch("https://upesipay.com", {
+    // FIXED: Updated endpoint path to use /withdrawals/ as required by UpesiPay
+    const res = await fetch("https://upesipay.com/api/v2/withdrawals/initiate/", {
       method: "POST",
-      headers: { Authorization: `Basic ${authToken}`, "Content-Type": "application/json" },
+      headers: { 
+        Authorization: `Basic ${authToken}`, 
+        "Content-Type": "application/json",
+        "Accept": "application/json"
+      },
       body: JSON.stringify({
         channel_id: process.env.UPESIPAY_B2C_CHANNEL_ID || "wallet",
         phone_number: phone,
         amount: amount,
-        remarks: "Campaign Reward Payout",
+        remarks: "Campaign Winner Reward",
+        // processing_type: "instant" // Optional parameter if your account configuration needs it
       }),
     });
-    const data = await res.json();
+
+    // Guard against non-JSON errors by reading response as raw text first
+    const rawText = await res.text();
+    let data;
+    
+    try {
+      data = rawText ? JSON.parse(rawText) : {};
+    } catch {
+      console.error("UpesiPay B2C returned an unexpected response format:", { 
+        status: res.status, 
+        rawText: rawText.slice(0, 300) 
+      });
+      return { ok: false, data: { message: `Withdrawal endpoint returned status ${res.status}` } };
+    }
+
     return { ok: res.ok && data.success === true, data };
   } catch (err) {
-    console.error("Critical B2C Network Execution Fault:", err);
+    console.error("Critical UpesiPay B2C Network Request Exception:", err);
     return { ok: false, data: null };
   }
 }
+
 
 async function initiateStkPush(phone: string, amount: number, callbackUrl: string) {
   const authToken = Buffer.from(`${process.env.UPESIPAY_API_USERNAME}:${process.env.UPESIPAY_API_PASSWORD}`).toString("base64");
