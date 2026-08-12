@@ -106,7 +106,7 @@ async function initiateStkPush(phone: string, amount: number, callbackUrl: strin
       body: JSON.stringify({
         channel_id: channel === "wallet" ? "wallet" : channel,
         phone_number: phone,
-        amount: Math.floor(Number(amount)), // FIXED: Guarantees a clean, non-decimal whole integer number
+        amount: Math.floor(Number(amount)),
         callback_url: callbackUrl,
       }),
     });
@@ -115,8 +115,6 @@ async function initiateStkPush(phone: string, amount: number, callbackUrl: strin
     console.log("UpesiPay STK Push response payload:", text);
     
     const parsedData = text ? JSON.parse(text) : {};
-    
-    // FIXED: Maps tracking codes across ALL possible property variations UpesiPay uses
     const checkoutId = parsedData.checkout_request_id || parsedData.data?.checkout_request_id || parsedData.checkout_id;
     const merchantId = parsedData.merchant_request_id || parsedData.data?.merchant_request_id || parsedData.merchant_id;
     const hasSucceeded = res.ok && (parsedData.success === true || parsedData.status === "success" || !!checkoutId);
@@ -132,7 +130,6 @@ async function initiateStkPush(phone: string, amount: number, callbackUrl: strin
     return { ok: false, checkoutId: null, merchantId: null, message: "Network connection breakdown" };
   }
 }
-
 
 export async function POST(req: NextRequest) {
   let payload: OnfonPayload;
@@ -176,24 +173,22 @@ export async function POST(req: NextRequest) {
     const appUrl = process.env.APP_URL || "https://vercel.app";
     const callbackUrl = `${appUrl}/api/payment-callback`;
 
-    // 1. FIXED: Log the transaction synchronously so order ID generation doesn't break
+    // 1. Log the transaction synchronously
     const orderResult = await runWithTimeout(
       sql`INSERT INTO orders (phone_number, session_id, package_size, quantity, unit_price, total_amount, status) VALUES (${phone}, ${sessionId}, ${product.size}, 1, ${product.price}, ${product.price}, 'pending') RETURNING id`,
       1200
     );
     const orderId = (orderResult.rows[0] as { id: number }).id;
 
-    // 2. FIXED: Trigger UpesiPay STK push directly within the synchronous block. 
-    // This blocks function termination until the API call reaches Safaricom's gateway.
-        //  FIXED: Unpacks the modern flattened output parameters cleanly
+    // 2. Trigger UpesiPay prompt synchronously
     const result = await initiateStkPush(phone, product.price, callbackUrl);
     
     if (!result.ok || !result.checkoutId) {
       await sql`UPDATE orders SET status = 'failed' WHERE id = ${orderId}`;
-      return;
+      const errMsg = result.message || "Could not send payment prompt.";
+      return respond(`Sorry, ${errMsg} Please try again shortly.`, false);
     }
 
-    // Maps directly to the flat return properties to avoid type parameter warnings
     await sql`
       UPDATE orders 
       SET status = 'awaiting_payment', 
@@ -201,7 +196,6 @@ export async function POST(req: NextRequest) {
           merchant_request_id = ${result.merchantId} 
       WHERE id = ${orderId}
     `;
-
 
     return respond(
       `You chose Box ${product.code}.\nEnter your M-PESA PIN to see what the box has in store for you.`,
@@ -216,4 +210,3 @@ export async function POST(req: NextRequest) {
 export async function GET() {
   return new NextResponse("Service operational", { status: 200, headers: { "Content-Type": "text/plain" } });
 }
-
