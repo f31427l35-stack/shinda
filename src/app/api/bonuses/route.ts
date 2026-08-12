@@ -11,14 +11,41 @@ export async function GET(req: NextRequest) {
   const perPage = Math.min(100, Number(searchParams.get("perPage")) || 10);
   const offset = (page - 1) * perPage;
 
-  const { rows: countRows } = await sql`SELECT COUNT(*)::int AS total FROM bonus_payouts`;
+  try {
+    // 1. Extract total count of payouts
+    const { rows: countRows } = await sql`
+      SELECT COUNT(*)::int AS total 
+      FROM bonus_payouts
+    `;
 
-  const { rows } = await sql`
-    SELECT id, period, phone_number, total_spent, amount, status, created_at
-    FROM bonus_payouts
-    ORDER BY period DESC
-    LIMIT ${perPage} OFFSET ${offset}
-  `;
+    // 2. Extract paginated payout transaction history logs
+    const { rows } = await sql`
+      SELECT 
+        id, 
+        period, 
+        phone_number, 
+        total_spent, 
+        amount, 
+        status, 
+        created_at 
+      FROM bonus_payouts 
+      ORDER BY period DESC 
+      LIMIT ${perPage} 
+      OFFSET ${offset}
+    `;
 
-  return NextResponse.json({ payouts: rows, total: countRows[0].total, page, perPage });
+    // FIXED: Formatted array index bounds with safe fallback parameter defaults
+    const grandTotalEntries = countRows && countRows.length > 0 ? countRows[0].total : 0;
+
+    return NextResponse.json({ 
+      payouts: rows, 
+      total: grandTotalEntries, 
+      page, 
+      perPage 
+    });
+
+  } catch (error) {
+    console.error("Failed to query bonus payouts data:", error);
+    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+  }
 }
