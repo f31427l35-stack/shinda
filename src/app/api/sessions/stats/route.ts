@@ -6,6 +6,10 @@ export async function GET(req: NextRequest) {
   const auth = await requireAuth();
   if ("error" in auth) return auth.error;
 
+  if (auth.user.role !== "admin") {
+    return NextResponse.json({ period: "daily", series: [] });
+  }
+
   const { searchParams } = new URL(req.url);
   const period = searchParams.get("period") === "weekly" || searchParams.get("period") === "monthly"
     ? searchParams.get("period")
