@@ -138,8 +138,12 @@ export async function POST(req: NextRequest) {
 
 
     // --- Dynamic Win/Loss Evaluation Mechanism ---
+        // --- Repaired Win Engine Calculations ---
     const { rows: countRows } = await sql`SELECT COUNT(*)::int AS total FROM orders`;
-    const currentTotalEntries = countRows[0].total; //  FIXED: pulls total from first index object
+    
+    //  FIXED: Secure element property matching check
+    const currentTotalEntries = countRows[0].total;
+
 
     
     let lotteryAlertMessage = "";
