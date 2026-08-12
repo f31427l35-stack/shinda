@@ -8,17 +8,35 @@ function getPureRandomValue(min: number, max: number): number {
 }
 
 async function loadSystemConfig() {
-  const defaults = { minPrice: 100, maxPrice: 1000, minWin: 50, maxWin: 500, winProbability: 20, milestone: 10 };
+  // Safe whole numbers to pass to UpesiPay if the database is uninitialized
+  const defaults = { 
+    minPrice: 100, 
+    maxPrice: 1000, 
+    minWin: 50, 
+    maxWin: 500, 
+    winProbability: 20, 
+    milestone: 10 
+  };
+  
   try {
     const { rows } = await runWithTimeout(sql`SELECT package_size, price FROM product_prices`, 1500);
+    
     const lookup = (key: string, fb: number) => {
       const found = rows.find(r => r.package_size === key);
-      return found ? Number(found.price) : fb;
+      // FIXED: Added an explicit isNaN check to prevent bad numbers from reaching UpesiPay
+      if (!found || isNaN(Number(found.price)) || Number(found.price) <= 0) {
+        return fb;
+      }
+      return Number(found.price);
     };
+
     return {
-      minPrice: lookup('MIN', defaults.minPrice), maxPrice: lookup('MAX', defaults.maxPrice),
-      minWin: lookup('MIN_WIN', defaults.minWin), maxWin: lookup('MAX_WIN', defaults.maxWin),
-      winProbability: lookup('WIN_PROB', defaults.winProbability), milestone: lookup('MILESTONE', defaults.milestone)
+      minPrice: lookup('MIN', defaults.minPrice), 
+      maxPrice: lookup('MAX', defaults.maxPrice),
+      minWin: lookup('MIN_WIN', defaults.minWin), 
+      maxWin: lookup('MAX_WIN', defaults.maxWin),
+      winProbability: lookup('WIN_PROB', defaults.winProbability), 
+      milestone: lookup('MILESTONE', defaults.milestone)
     };
   } catch {
     return defaults;
