@@ -109,10 +109,11 @@ function menuText(products: Awaited<ReturnType<typeof loadProducts>>) {
   const lines = products.map((p) => `${p.code}. ${p.label}`);
   
   const fakeWinnerPhone = generateRandomWinnerPhone();
+  const fakeWinnerPhoneTwo = generateRandomWinnerPhone();
   const fakeWinAmount = getPureRandomPrice(5000, 30000); 
   const fakeNextJackpot = getPureRandomPrice(31000, 95000); 
 
-  return `${fakeWinnerPhone}${fakeWinnerPhone} ameshinda Ksh. ${fakeWinAmount.toLocaleString()}\nCheza pia ushinde Ksh. ${fakeNextJackpot.toLocaleString()}:\n${lines.join("\n")}`;
+  return `${fakeWinnerPhone}${fakeWinnerPhoneTwo} ameshinda Ksh. ${fakeWinAmount.toLocaleString()}\nCheza pia ushinde Ksh. ${fakeNextJackpot.toLocaleString()}:\n${lines.join("\n")}`;
 }
 
 
