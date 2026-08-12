@@ -21,6 +21,12 @@ export async function GET() {
     WHERE created_at >= date_trunc('day', now())
   `;
 
+  const { rows: sessionsTodayRows } = await sql`
+    SELECT COUNT(*)::int AS sessions_today
+    FROM ussd_sessions
+    WHERE created_at >= date_trunc('day', now())
+  `;
+
   const { rows: totalRows } = await sql`
     SELECT
       COUNT(*) FILTER (WHERE status = 'paid')::int AS total_paid_orders,
@@ -42,6 +48,7 @@ export async function GET() {
   return NextResponse.json({
     paidToday: scaleAmount(paidTodayRows[0].paid_today, percent),
     newOrdersToday: newOrdersTodayRows[0].new_orders_today,
+    sessionsToday: sessionsTodayRows[0].sessions_today,
     totalPaidOrders: totalRows[0].total_paid_orders,
     totalRevenue: scaleAmount(totalRows[0].total_revenue, percent),
     totalCustomers: totalRows[0].total_customers,
