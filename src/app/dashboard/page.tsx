@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from "recharts";
 
 type Stats = {
@@ -18,6 +18,8 @@ type Stats = {
 
 type SessionPoint = { bucket: string; count: number };
 type Period = "daily" | "weekly" | "monthly";
+type TodayInterval = "15m" | "30m" | "1h" | "12h";
+type TodayPoint = { label: string; revenue: number; sessions: number };
 
 function StatCard({ label, value }: { label: string; value: string | number }) {
   return (
@@ -34,6 +36,92 @@ function formatBucketLabel(bucket: string, period: Period) {
     return new Date(Number(year), Number(month) - 1, 1).toLocaleDateString("en-US", { month: "short", year: "2-digit" });
   }
   return new Date(bucket).toLocaleDateString("en-US", { month: "numeric", day: "numeric" });
+}
+
+function TodayLiveChart() {
+  const [interval, setInterval_] = useState<TodayInterval>("15m");
+  const [data, setData] = useState<TodayPoint[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    setLoading(true);
+    fetch(`/api/stats/today-series?interval=${interval}`)
+      .then((res) => res.json())
+      .then((d) => setData(d.series || []))
+      .finally(() => setLoading(false));
+  }, [interval]);
+
+  return (
+    <div className="bg-neutral-900 rounded-xl p-4 sm:p-5">
+      <div className="flex items-center justify-between flex-wrap gap-3 mb-4">
+        <h3 className="text-white font-semibold">Today's activity</h3>
+        <div className="flex items-center gap-1 bg-neutral-800 rounded-lg p-1">
+          {(["15m", "30m", "1h", "12h"] as TodayInterval[]).map((iv) => (
+            <button
+              key={iv}
+              onClick={() => setInterval_(iv)}
+              className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                interval === iv ? "bg-amber-500 text-black" : "text-neutral-400 hover:text-white"
+              }`}
+            >
+              {iv}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div style={{ height: 280 }}>
+        {loading ? (
+          <div className="h-full flex items-center justify-center text-neutral-500 text-sm">Loading...</div>
+        ) : (
+          <ResponsiveContainer width="100%" height="100%">
+            <AreaChart data={data}>
+              <defs>
+                <linearGradient id="revenueGradient" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.4} />
+                  <stop offset="95%" stopColor="#f59e0b" stopOpacity={0} />
+                </linearGradient>
+                <linearGradient id="sessionsGradient" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#38bdf8" stopOpacity={0.4} />
+                  <stop offset="95%" stopColor="#38bdf8" stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid stroke="#27272a" vertical={false} />
+              <XAxis dataKey="label" tick={{ fill: "#71717a", fontSize: 11 }} angle={-45} textAnchor="end" height={50} />
+              <YAxis yAxisId="revenue" tick={{ fill: "#71717a", fontSize: 11 }} allowDecimals={false} />
+              <YAxis yAxisId="sessions" orientation="right" tick={{ fill: "#71717a", fontSize: 11 }} allowDecimals={false} />
+              <Tooltip
+                contentStyle={{ background: "#18181b", border: "1px solid #3f3f46", borderRadius: 8 }}
+                labelStyle={{ color: "#fff" }}
+                formatter={(value, name) =>
+                  name === "revenue" ? [`KES ${Number(value ?? 0).toLocaleString()}`, "Revenue"] : [value, "Sessions"]
+                }
+              />
+              <Area
+                yAxisId="revenue"
+                type="monotone"
+                dataKey="revenue"
+                stroke="#f59e0b"
+                strokeWidth={2}
+                fill="url(#revenueGradient)"
+              />
+              <Area
+                yAxisId="sessions"
+                type="monotone"
+                dataKey="sessions"
+                stroke="#38bdf8"
+                strokeWidth={2}
+                fill="url(#sessionsGradient)"
+              />
+            </AreaChart>
+          </ResponsiveContainer>
+        )}
+      </div>
+      <div className="flex items-center gap-4 mt-3 text-xs text-neutral-400">
+        <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-amber-500" /> Revenue</span>
+        <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-sky-400" /> Sessions</span>
+      </div>
+    </div>
+  );
 }
 
 export default function DashboardPage() {
@@ -99,9 +187,14 @@ export default function DashboardPage() {
         )}
       </div>
 
+      {!stats.isAdmin && (
+        <div className="mb-4">
+          <TodayLiveChart />
+        </div>
+      )}
+
       {stats.isAdmin && (
         <>
-          {/* Revenue Section */}
           <div className="bg-neutral-900 rounded-xl p-4 sm:p-5 mb-4">
             <div className="flex items-center justify-between flex-wrap gap-3 mb-4">
               <h3 className="text-white font-semibold">Revenue breakdown</h3>
@@ -136,7 +229,6 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          {/* Sessions Section */}
           <div className="bg-neutral-900 rounded-xl p-4 sm:p-5">
             <div className="flex items-center justify-between flex-wrap gap-3 mb-4">
               <h3 className="text-white font-semibold">USSD sessions (dial-ins)</h3>
