@@ -47,7 +47,6 @@ export default function DashboardPage() {
   const [sessions, setSessions] = useState<SessionPoint[]>([]);
   const [sessionsLoading, setSessionsLoading] = useState(true);
 
-  // Fetch metrics data when revenue filter changes
   useEffect(() => {
     setLoading(true);
     fetch(`/api/stats?period=${revenuePeriod}`)
@@ -60,8 +59,6 @@ export default function DashboardPage() {
       .finally(() => setLoading(false));
   }, [revenuePeriod]);
 
-  // Fetch session data when session filter changes (only matters for admins;
-  // non-admins get an empty series back from the API anyway)
   useEffect(() => {
     setSessionsLoading(true);
     fetch(`/api/sessions/stats?period=${sessionsPeriod}`)
@@ -93,12 +90,15 @@ export default function DashboardPage() {
         <StatCard label="Paid today" value={`KES ${stats.paidToday.toLocaleString()}`} />
         <StatCard label="New orders today" value={stats.newOrdersToday} />
         <StatCard label="USSD sessions today" value={stats.sessionsToday} />
-        <StatCard label="Total paid orders" value={stats.totalPaidOrders.toLocaleString()} />
-        <StatCard label="Total revenue" value={`KES ${stats.totalRevenue.toLocaleString()}`} />
-        <StatCard label="Total customers" value={stats.totalCustomers.toLocaleString()} />
+        {stats.isAdmin && (
+          <>
+            <StatCard label="Total paid orders" value={stats.totalPaidOrders.toLocaleString()} />
+            <StatCard label="Total revenue" value={`KES ${stats.totalRevenue.toLocaleString()}`} />
+            <StatCard label="Total customers" value={stats.totalCustomers.toLocaleString()} />
+          </>
+        )}
       </div>
 
-      {/* Graphs are admin-only */}
       {stats.isAdmin && (
         <>
           {/* Revenue Section */}
