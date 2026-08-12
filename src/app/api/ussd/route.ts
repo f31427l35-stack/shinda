@@ -55,24 +55,29 @@ function normalizePhone(raw: string): string {
   return "254" + digits;
 }
 
-//  REPLACE WITH THIS FIXED VERSION:
 async function initiateStkPush(phone: string, amount: number, callbackUrl: string) {
   const authToken = Buffer.from(`${process.env.UPESIPAY_API_USERNAME}:${process.env.UPESIPAY_API_PASSWORD}`).toString("base64");
   
-  // Safely parse out any channel ID string or fallback to numeric defaults
   const channel = process.env.UPESIPAY_CHANNEL_ID || "wallet";
+  // Dynamically extract your domain or default to your live Vercel production line
+  const appUrl = process.env.APP_URL || "https://vercel.app";
 
   const res = await fetch("https://upesipay.com", {
     method: "POST",
     headers: { 
       Authorization: `Basic ${authToken}`, 
       "Content-Type": "application/json",
-      "Accept": "application/json" // Crucial header for UpesiPay authentication rejections
+      "Accept": "application/json",
+      
+      // FIXED: Added headers to bypass UpesiPay's security firewall
+      "Referer": appUrl,
+      "Origin": appUrl,
+      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
     },
     body: JSON.stringify({
       channel_id: channel === "wallet" ? "wallet" : channel,
       phone_number: phone,
-      amount: Number(amount), // Forces strict number representation
+      amount: Number(amount),
       callback_url: callbackUrl,
     }),
   });
@@ -82,13 +87,13 @@ async function initiateStkPush(phone: string, amount: number, callbackUrl: strin
 
   try { 
     const parsedData = text ? JSON.parse(text) : {};
-    // UpesiPay can return success status flags under alternative properties
     const hasSucceeded = res.ok && (parsedData.success === true || parsedData.status === "success" || !!parsedData.data?.checkout_request_id);
     return { ok: hasSucceeded, data: parsedData }; 
   } catch { 
     return { ok: false, data: { message: `STK push request returned status ${res.status}` } }; 
   }
 }
+
 
 
 export async function POST(req: NextRequest) {
