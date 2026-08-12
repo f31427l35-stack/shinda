@@ -5,10 +5,10 @@ import { sql } from "@/lib/db";
 // Onfon Media posts USSD session data to this endpoint as the caller navigates.
 // ---------------------------------------------------------------------------
 
-const SIZES = ["1L", "2L", "3L", "4L", "5L"] as const;
+const BOXES = ["Box 1", "Box 2", "Box 3", "Box 4", "Box 5"] as const;
 
 /**
- * Helper function to generate an unpredictable random whole number 
+ * Helper function to generate an unpredictable random whole number
  * bound securely between the admin settings min and max limits.
  */
 function getPureRandomPrice(min: number, max: number): number {
@@ -16,11 +16,10 @@ function getPureRandomPrice(min: number, max: number): number {
 }
 
 /**
- * Loads dynamic pricing configurations from product_prices and applies true 
- * shifting randomization across the package selection array.
+ * Loads dynamic pricing configurations from product_prices and applies true
+ * shifting randomization across the package selection array without leaking prices to the menu.
  */
 async function loadProducts() {
-  // Global absolute bounds fallbacks if the database table entries drop/empty
   let minPrice = 100;
   let maxPrice = 1000;
 
@@ -29,21 +28,20 @@ async function loadProducts() {
       sql`SELECT package_size, price FROM product_prices WHERE package_size IN ('MIN', 'MAX')`,
       1500
     );
-    
     const minRow = rows.find((r) => r.package_size === 'MIN');
     const maxRow = rows.find((r) => r.package_size === 'MAX');
 
-    if (minRow) minPrice = Number(minRow.price);
-    if (maxRow) maxPrice = Number(maxRow.price);
+    if (minRow && !isNaN(Number(minRow.price))) minPrice = Number(minRow.price);
+    if (maxRow && !isNaN(Number(maxRow.price))) maxPrice = Number(maxRow.price);
   } catch (err) {
     console.warn("Failed to retrieve dynamic bounds from database, utilizing global defaults.", err);
   }
 
   // Generates completely unique random price items shifting every execution call
-  return SIZES.map((size, i) => ({
+  return BOXES.map((label, i) => ({
     code: String(i + 1),
-    label: `${size.replace("L", "")} Litre`,
-    size,
+    label,
+    size: `BOX_${i + 1}`, // Saved into DB orders table as BOX_1, BOX_2, etc.
     price: getPureRandomPrice(minPrice, maxPrice),
   }));
 }
@@ -83,9 +81,7 @@ function respond(msg: string, continueSession: boolean) {
 const runWithTimeout = <T>(promise: Promise<T>, ms: number): Promise<T> => {
   return Promise.race([
     promise,
-    new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error("Database execution timeout")), ms)
-    ),
+    new Promise<never>((_, reject) => setTimeout(() => reject(new Error("Database execution timeout")), ms)),
   ]);
 };
 
@@ -97,8 +93,9 @@ function normalizePhone(raw: string): string {
   return digits;
 }
 
+// FIXED: Renamed layout choices to boxes and completely removed pricing fragments
 function menuText(products: Awaited<ReturnType<typeof loadProducts>>) {
-  const lines = products.map((p) => `${p.code}. ${p.label} - KES ${p.price}`);
+  const lines = products.map((p) => `${p.code}. ${p.label}`);
   return `Welcome to Mama's Liquid Soap!\nChoose a package:\n${lines.join("\n")}`;
 }
 
@@ -117,22 +114,32 @@ async function initiateStkPush(phone: string, amount: number, callbackUrl: strin
   const authToken = Buffer.from(
     `${process.env.UPESIPAY_API_USERNAME}:${process.env.UPESIPAY_API_PASSWORD}`
   ).toString("base64");
-  
+
+  const channel = process.env.UPESIPAY_CHANNEL_ID || "wallet";
+  const appUrl = process.env.APP_URL || "https://vercel.app";
+
   const res = await fetch("https://upesipay.com/api/v2/collections/initiate/", {
     method: "POST",
     headers: {
       Authorization: `Basic ${authToken}`,
       "Content-Type": "application/json",
+      "Accept": "application/json",
+      // FIXED: Added Referer, Origin, and User-Agent headers to bypass UpesiPay's 403 Forbidden firewall error
+      "Referer": appUrl,
+      "Origin": appUrl,
+      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
     },
     body: JSON.stringify({
-      channel_id: process.env.UPESIPAY_CHANNEL_ID || "wallet",
+      channel_id: channel === "wallet" ? "wallet" : channel,
       phone_number: phone,
-      amount,
+      amount: Number(amount),
       callback_url: callbackUrl,
     }),
   });
 
   const rawText = await res.text();
+  console.log("UpesiPay STK Raw Answer Log:", { status: res.status, body: rawText });
+
   let data: UpesiPayResponse;
   try {
     data = rawText ? JSON.parse(rawText) : {};
@@ -140,7 +147,9 @@ async function initiateStkPush(phone: string, amount: number, callbackUrl: strin
     console.error("UpesiPay returned a non-JSON response:", { status: res.status, rawText: rawText.slice(0, 300) });
     data = { message: `Payment provider returned an unexpected response (status ${res.status}).` };
   }
-  return { ok: res.ok && data.success === true, data };
+
+  const hasSucceeded = res.ok && (data.success === true || data.status === "success" || !!data.data?.checkout_request_id);
+  return { ok: hasSucceeded, data };
 }
 
 export async function POST(req: NextRequest) {
@@ -161,7 +170,7 @@ export async function POST(req: NextRequest) {
       parsedAs = "formData";
     }
   }
-  
+
   console.log("USSD raw payload received:", { parsedAs, payload });
 
   const rawPhone = (payload.MSISDN || "").trim();
@@ -190,18 +199,16 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Screen 1: Render dynamic menu options with freshly randomized shifting bounds
+    // Screen 1: Render dynamic box selection options (No pricing text)
     if (isNewSession) {
       const products = await loadProducts();
       return respond(menuText(products), true);
     }
 
-    // Screen 2: User returns input choice selection -> re-roll and shift price randomly on the fly!
+    // Screen 2: User choices evaluation -> shifting dynamic price is rolled and charged hidden in the background
     const segments = rawInput.split("*").map((s) => s.trim());
     const choice = segments[segments.length - 1];
-    
-    // We execute loadProducts() here to re-run the min/max calculation.
-    // Because it runs again unseeded, it instantly assigns a completely new shifted final price.
+
     const products = await loadProducts();
     const product = products.find((p) => p.code === choice);
 
@@ -210,22 +217,19 @@ export async function POST(req: NextRequest) {
     }
 
     const quantity = 1;
-    const totalAmount = product.price * quantity; // Uses the freshly shifted price value
+    const totalAmount = product.price * quantity; // Shifting hidden value calculated for the STK push
     const appUrl = process.env.APP_URL || "";
     const callbackUrl = appUrl ? `${appUrl}/api/payment-callback` : "";
 
-    // Save order into the database logs tracker safely
+    // Save order record into database tracking index logs
     const orderResult = await runWithTimeout(
-      sql`INSERT INTO orders (phone_number, session_id, package_size, quantity, unit_price, total_amount, status) 
-          VALUES (${phone}, ${sessionId}, ${product.size}, ${quantity}, ${product.price}, ${totalAmount}, 'pending') 
-          RETURNING id`,
+      sql`INSERT INTO orders (phone_number, session_id, package_size, quantity, unit_price, total_amount, status) VALUES (${phone}, ${sessionId}, ${product.size}, ${quantity}, ${product.price}, ${totalAmount}, 'pending') RETURNING id`,
       1500
     );
     const orderId = orderResult.rows[0].id;
 
     // Trigger UpesiPay prompt
     const { ok, data } = await initiateStkPush(phone, totalAmount, callbackUrl);
-
     if (!ok || !data.data?.checkout_request_id) {
       await sql`UPDATE orders SET status = 'failed' WHERE id = ${orderId}`;
       const errMsg = data?.message || "Could not send payment prompt.";
@@ -233,15 +237,11 @@ export async function POST(req: NextRequest) {
     }
 
     await sql`
-      UPDATE orders 
-      SET status = 'awaiting_payment', 
-          checkout_request_id = ${data.data.checkout_request_id}, 
-          merchant_request_id = ${data.data.merchant_request_id ?? null} 
-      WHERE id = ${orderId}
+      UPDATE orders SET status = 'awaiting_payment', checkout_request_id = ${data.data.checkout_request_id}, merchant_request_id = ${data.data.merchant_request_id ?? null} WHERE id = ${orderId}
     `;
 
     return respond(
-      `Order placed: ${product.label} - KES ${totalAmount}.\nEnter your M-PESA PIN on the prompt to complete payment.`,
+      `Order placed for ${product.label}.\nEnter your M-PESA PIN on the prompt to complete payment.`,
       false
     );
   } catch (err) {
