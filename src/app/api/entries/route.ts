@@ -12,25 +12,41 @@ export async function GET(req: NextRequest) {
   const perPage = Math.min(100, Number(searchParams.get("perPage")) || 10);
   const offset = (page - 1) * perPage;
   const campaignId = searchParams.get("campaignId");
-
   const likeTerm = `%${search}%`;
 
-  const { rows: countRows } = await sql`
-    SELECT COUNT(*)::int AS total
-    FROM entries e
-    WHERE e.phone_number ILIKE ${likeTerm}
-      AND (${campaignId}::int IS NULL OR e.campaign_id = ${campaignId}::int)
-  `;
+  try {
+    // 1. Fetch total entries matching search criteria
+    const { rows: countRows } = await sql`
+      SELECT COUNT(*)::int AS total 
+      FROM orders e 
+      WHERE e.phone_number ILIKE ${likeTerm}
+    `;
 
-  const { rows } = await sql`
-    SELECT e.id, e.phone_number, e.created_at, c.name AS campaign_name
-    FROM entries e
-    JOIN campaigns c ON c.id = e.campaign_id
-    WHERE e.phone_number ILIKE ${likeTerm}
-      AND (${campaignId}::int IS NULL OR e.campaign_id = ${campaignId}::int)
-    ORDER BY e.created_at DESC
-    LIMIT ${perPage} OFFSET ${offset}
-  `;
+    // 2. Fetch order entry rows matching search criteria
+    const { rows } = await sql`
+      SELECT 
+        e.id, 
+        e.phone_number, 
+        e.package_size, 
+        e.status AS delivery_status, 
+        e.created_at 
+      FROM orders e 
+      WHERE e.phone_number ILIKE ${likeTerm} 
+      ORDER BY e.created_at DESC 
+      LIMIT ${perPage} 
+      OFFSET ${offset}
+    `;
 
-  return NextResponse.json({ entries: rows, total: countRows[0].total, page, perPage });
+    // FIXED: Key renamed from 'entries' to 'orders' to match what your frontend client is fetching!
+    return NextResponse.json({ 
+      orders: rows, 
+      total: countRows[0]?.total ?? 0, 
+      page, 
+      perPage 
+    });
+
+  } catch (error) {
+    console.error("Failed to read orders from database:", error);
+    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+  }
 }
