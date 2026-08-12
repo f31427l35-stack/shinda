@@ -8,7 +8,7 @@ type Order = {
   phone_number: string;
   package_size: string;
   delivery_status: "pending" | "delivered";
-  created_at: string;
+  created_at: string;e
 };
 
 function OutcomeChip({ status }: { status: string }) {
@@ -25,56 +25,54 @@ function OutcomeChip({ status }: { status: string }) {
 
 // CHANGED: The modal now handles only min_price and max_price inputs
 function PriceSettingsModal({ onClose }: { onClose: () => void }) {
-    const [minPrice, setMinPrice] = useState<number>(100);
-    const [maxPrice, setMaxPrice] = useState<number>(1000);
-    const [minWin, setMinWin] = useState<number>(50);
-    const [maxWin, setMaxWin] = useState<number>(500);
-    const [winProbability, setWinProbability] = useState<number>(20);
-    const [entryMilestone, setEntryMilestone] = useState<number>(10);
-    const [loading, setLoading] = useState(true);
-    const [saving, setSaving] = useState(false);
-    const [error, setError] = useState("");
+  const [minPrice, setMinPrice] = useState<number>(100);
+  const [maxPrice, setMaxPrice] = useState<number>(1000);
+  const [minWin, setMinWin] = useState<number>(50);
+  const [maxWin, setMaxWin] = useState<number>(500);
+  const [winProbability, setWinProbability] = useState<number>(20);
+  const [entryMilestone, setEntryMilestone] = useState<number>(10);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
 
+  useEffect(() => {
+    fetch("/api/prices")
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.min_price !== undefined) setMinPrice(data.min_price);
+        if (data.max_price !== undefined) setMaxPrice(data.max_price);
+        if (data.min_win !== undefined) setMinWin(data.min_win);
+        if (data.max_win !== undefined) setMaxWin(data.max_win);
+        if (data.win_probability !== undefined) setWinProbability(data.win_probability);
+        if (data.entry_milestone !== undefined) setEntryMilestone(data.entry_milestone);
+      })
+      .catch(() => setError("Failed to fetch settings."))
+      .finally(() => setLoading(false));
+  }, []);
 
-    useEffect(() => {
-        fetch("/api/prices")
-          .then((res) => res.json())
-          .then((data) => {
-            if (data.min_price !== undefined) setMinPrice(data.min_price);
-            if (data.max_price !== undefined) setMaxPrice(data.max_price);
-            if (data.min_win !== undefined) setMinWin(data.min_win);
-            if (data.max_win !== undefined) setMaxWin(data.max_win);
-            if (data.win_probability !== undefined) setWinProbability(data.win_probability);
-            if (data.entry_milestone !== undefined) setEntryMilestone(data.entry_milestone);
-          })
-          .catch(() => setError("Failed to fetch settings."))
-          .finally(() => setLoading(false));
-      }, []);
+  async function handleSave() {
+    if (minPrice > maxPrice) {
+      setError("Minimum price cannot be greater than Maximum price.");
+      return;
+    }
+    if (minWin > maxWin) {
+      setError("Minimum win payout cannot be greater than Maximum win payout.");
+      return;
+    }
 
-
-    async function handleSave() {
-      if (minPrice > maxPrice) {
-        setError("Minimum price cannot be greater than Maximum price.");
-        return;
-      }
-      if (minWin > maxWin) {
-        setError("Minimum win payout cannot be greater than Maximum win payout.");
-        return;
-      }
-      setSaving(true);
-      setError("");
+    setSaving(true);
+    setError("");
     
-      const res = await fetch("/api/prices", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ minPrice, maxPrice, minWin, maxWin, winProbability, entryMilestone }),
+    const res = await fetch("/api/prices", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ minPrice, maxPrice, minWin, maxWin, winProbability, entryMilestone }),
     });
-
     
     setSaving(false);
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
-      setError(data.error || "Could not save pricing configuration.");
+      setError(data.error || "Could not save configuration settings.");
       return;
     }
     onClose();
@@ -82,7 +80,7 @@ function PriceSettingsModal({ onClose }: { onClose: () => void }) {
 
   return (
     <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
-      <div className="bg-neutral-900 border border-neutral-800 rounded-xl w-full max-w-sm p-5">
+      <div className="bg-neutral-900 border border-neutral-800 rounded-xl w-full max-w-sm p-5 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-white font-semibold">Random Pricing Limits</h3>
           <button onClick={onClose} className="text-neutral-400 hover:text-white">
@@ -158,18 +156,14 @@ function PriceSettingsModal({ onClose }: { onClose: () => void }) {
           <p className="text-red-400 text-xs mt-3">{error}</p>
         )}
 
-        <button
-          onClick={handleSave}
-          disabled={saving || loading}
-          className="w-full mt-5 bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-black text-sm font-medium py-2 rounded-lg transition-colors shadow-md shadow-amber-500/10"
-        >
+        <button onClick={handleSave} disabled={saving || loading} className="w-full mt-5 bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-black text-sm font-medium py-2 rounded-lg transition-colors shadow-md shadow-amber-500/10">
           {saving ? "Saving Configuration..." : "Save System Config"}
         </button>
-
       </div>
     </div>
   );
 }
+
 
 export default function EntriesPage() {
   const { user } = useAuth();
