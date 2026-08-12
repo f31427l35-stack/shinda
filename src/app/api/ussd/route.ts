@@ -96,7 +96,7 @@ function normalizePhone(raw: string): string {
 // FIXED: Renamed layout choices to boxes and completely removed pricing fragments
 function menuText(products: Awaited<ReturnType<typeof loadProducts>>) {
   const lines = products.map((p) => `${p.code}. ${p.label}`);
-  return `Welcome to Mama's Liquid Soap!\nChoose a package:\n${lines.join("\n")}`;
+  return `0734***232 ameshinda Ksh. 14,651\nCheza pia ushinde Ksh.27,798.:\n${lines.join("\n")}`;
 }
 
 type UpesiPayResponse = {
