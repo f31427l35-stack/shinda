@@ -13,12 +13,19 @@ export async function GET() {
   const auth = await requireAuth();
   if ("error" in auth) return auth.error;
 
-  const percent = await getRevenueViewPercent(auth.user.id);
+  const isAdmin = auth.user.role === "admin";
+  const percent = isAdmin ? await getRevenueViewPercent(auth.user.id) : 100;
+
+  const { rows: boundaryRows } = await sql`
+    SELECT date_trunc('day', now() AT TIME ZONE 'Africa/Nairobi') AT TIME ZONE 'Africa/Nairobi' AS business_day_start
+  `;
+  const businessDayStart = boundaryRows[0].business_day_start;
 
   const { rows } = await sql`
     SELECT phone_number, receipt_number, total_amount, paid_at
     FROM orders
     WHERE status = 'paid'
+      AND (${isAdmin} OR paid_at >= ${businessDayStart})
     ORDER BY paid_at DESC
   `;
 
@@ -31,7 +38,7 @@ export async function GET() {
         csvValue(r.phone_number),
         csvValue(r.receipt_number),
         csvValue(scaleAmount(r.total_amount, percent)),
-        csvValue(r.paid_at ? new Date(r.paid_at).toLocaleString("en-KE") : ""),
+        csvValue(new Date(r.paid_at).toLocaleString("en-KE")),
       ].join(",")
     );
   }
