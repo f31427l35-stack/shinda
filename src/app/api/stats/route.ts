@@ -76,13 +76,19 @@ export async function GET(req: NextRequest) {
     `);
   }
 
+    // Read row [0] for each query to access the columns correctly
   return NextResponse.json({
-    paidToday: scaleAmount(paidTodayRows[0].paid_today, percent),
-    newOrdersToday: newOrdersTodayRows[0].new_orders_today,
-    sessionsToday: sessionsTodayRows[0].sessions_today,
-    totalPaidOrders: totalRows[0].total_paid_orders,
-    totalRevenue: scaleAmount(totalRows[0].total_revenue, percent),
-    totalCustomers: totalRows[0].total_customers,
+    // Today's metrics (Will show 0 after 2:00 AM EAT if no new items exist)
+    paidToday: scaleAmount(paidTodayRows[0]?.paid_today || 0, percent),
+    newOrdersToday: newOrdersTodayRows[0]?.new_orders_today || 0,
+    sessionsToday: sessionsTodayRows[0]?.sessions_today || 0,
+
+    // Lifetime totals (Will show your actual real lifetime data)
+    totalPaidOrders: totalRows[0]?.total_paid_orders || 0,
+    totalRevenue: scaleAmount(totalRows[0]?.total_revenue || 0, percent),
+    totalCustomers: totalRows[0]?.total_customers || 0,
+
+    // Graph breakdown
     perDay: chartRows.map((r) => ({ date: r.day, amount: scaleAmount(r.amount, percent) })),
   });
 }
