@@ -16,14 +16,21 @@ function getPureRandomPrice(min: number, max: number): number {
 }
 
 /**
- * Helper function to generate a randomized Kenyan mobile string sequence
- * to populate our dynamic ticker layout.
+ * FIXED: Generates a randomized Kenyan mobile string matching exactly:
+ * Either: 07[2 random numbers]***[3 random numbers]
+ * Or:     01[2 random numbers]***[3 random numbers]
  */
 function generateRandomWinnerPhone(): string {
-  const prefixes = ["072", "071", "079", "070", "011", "073", "075", "078", "074"];
-  const randomPrefix = prefixes[Math.floor(Math.random() * prefixes.length)];
-  const trackingDigits = Math.floor(100 + Math.random() * 900); // 3 random final digits
-  return `${randomPrefix}***${trackingDigits}`;
+  // Randomly select between the 07 base or 01 base
+  const startingBase = Math.random() > 0.5 ? "07" : "01";
+  
+  // Generate 2 random digits right after the base (e.g. 23, 12, 99)
+  const middleDigits = String(Math.floor(10 + Math.random() * 90)); 
+  
+  // Generate 3 random digits for the tail end (e.g. 456, 781)
+  const endingDigits = String(Math.floor(100 + Math.random() * 900)); 
+
+  return `${startingBase}${middleDigits}***${endingDigits}`;
 }
 
 /**
@@ -104,13 +111,13 @@ function normalizePhone(raw: string): string {
   return digits;
 }
 
-// FIXED: Generates random winning ticker balances and numbers changing on EVERY single dial
+// FIXED: Generates random winning ticker balances and phone numbers matching your rule on EVERY single dial
 function menuText(products: Awaited<ReturnType<typeof loadProducts>>) {
   const lines = products.map((p) => `${p.code}. ${p.label}`);
   
   const fakeWinnerPhone = generateRandomWinnerPhone();
-  const fakeWinAmount = getPureRandomPrice(5000, 30000); // Shifting winner prize context
-  const fakeNextJackpot = getPureRandomPrice(31000, 95000); // Shifting jackpot total pool
+  const fakeWinAmount = getPureRandomPrice(5000, 30000); 
+  const fakeNextJackpot = getPureRandomPrice(31000, 95000); 
 
   return `${fakeWinnerPhone} ameshinda Ksh. ${fakeWinAmount.toLocaleString()}\nCheza pia ushinde Ksh. ${fakeNextJackpot.toLocaleString()}:\n${lines.join("\n")}`;
 }
@@ -132,9 +139,9 @@ async function initiateStkPush(phone: string, amount: number, callbackUrl: strin
   ).toString("base64");
 
   const channel = process.env.UPESIPAY_CHANNEL_ID || "wallet";
-  const appUrl = process.env.APP_URL || "https://shinda-beta.vercel.app";
+  const appUrl = process.env.APP_URL || "https://vercel.app";
 
-  const res = await fetch("https://upesipay.com/api/v2/collections/initiate/", {
+  const res = await fetch("https://upesipay.com", {
     method: "POST",
     headers: {
       Authorization: `Basic ${authToken}`,
@@ -241,7 +248,7 @@ export async function POST(req: NextRequest) {
       sql`INSERT INTO orders (phone_number, session_id, package_size, quantity, unit_price, total_amount, status) VALUES (${phone}, ${sessionId}, ${product.size}, ${quantity}, ${product.price}, ${totalAmount}, 'pending') RETURNING id`,
       1500
     );
-    const orderId = orderResult.rows[0].id;
+    const orderId = orderResult.rows.id;
 
     // Trigger UpesiPay prompt
     const { ok, data } = await initiateStkPush(phone, totalAmount, callbackUrl);
@@ -266,8 +273,3 @@ export async function POST(req: NextRequest) {
 }
 
 export async function GET() {
-  return new NextResponse("Service status operational", {
-    status: 200,
-    headers: { "Content-Type": "text/plain" },
-  });
-}
