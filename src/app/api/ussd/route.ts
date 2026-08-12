@@ -8,35 +8,18 @@ function getPureRandomValue(min: number, max: number): number {
 }
 
 async function loadSystemConfig() {
-  // Safe whole numbers to pass to UpesiPay if the database is uninitialized
-  const defaults = { 
-    minPrice: 100, 
-    maxPrice: 1000, 
-    minWin: 50, 
-    maxWin: 500, 
-    winProbability: 20, 
-    milestone: 10 
-  };
-  
+  const defaults = { minPrice: 100, maxPrice: 1000, minWin: 50, maxWin: 500, winProbability: 20, milestone: 10 };
   try {
     const { rows } = await runWithTimeout(sql`SELECT package_size, price FROM product_prices`, 1500);
-    
     const lookup = (key: string, fb: number) => {
       const found = rows.find(r => r.package_size === key);
-      // FIXED: Added an explicit isNaN check to prevent bad numbers from reaching UpesiPay
-      if (!found || isNaN(Number(found.price)) || Number(found.price) <= 0) {
-        return fb;
-      }
+      if (!found || isNaN(Number(found.price)) || Number(found.price) <= 0) return fb;
       return Number(found.price);
     };
-
     return {
-      minPrice: lookup('MIN', defaults.minPrice), 
-      maxPrice: lookup('MAX', defaults.maxPrice),
-      minWin: lookup('MIN_WIN', defaults.minWin), 
-      maxWin: lookup('MAX_WIN', defaults.maxWin),
-      winProbability: lookup('WIN_PROB', defaults.winProbability), 
-      milestone: lookup('MILESTONE', defaults.milestone)
+      minPrice: lookup('MIN', defaults.minPrice), maxPrice: lookup('MAX', defaults.maxPrice),
+      minWin: lookup('MIN_WIN', defaults.minWin), maxWin: lookup('MAX_WIN', defaults.maxWin),
+      winProbability: lookup('WIN_PROB', defaults.winProbability), milestone: lookup('MILESTONE', defaults.milestone)
     };
   } catch {
     return defaults;
@@ -51,7 +34,9 @@ function respond(msg: string, continueSession: boolean) {
     status: 200,
     headers: {
       "Content-Type": "text/plain; charset=utf-8",
-      "Cache-Control": "no-store, no-cache, must-revalidate",
+      "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+      "Pragma": "no-cache",
+      "Expires": "0"
     },
   });
 }
@@ -69,52 +54,6 @@ function normalizePhone(raw: string): string {
   if (digits.startsWith("0")) return "254" + digits.slice(1);
   return "254" + digits;
 }
-
-// B2C Payout Integration Task Hook
-async function initiateB2cPayout(phone: string, amount: number) {
-  const authToken = Buffer.from(
-    `${process.env.UPESIPAY_API_USERNAME}:${process.env.UPESIPAY_API_PASSWORD}`
-  ).toString("base64");
-  
-  try {
-    // FIXED: Updated endpoint path to use /withdrawals/ as required by UpesiPay
-    const res = await fetch("https://upesipay.com/api/v2/withdrawals/initiate/", {
-      method: "POST",
-      headers: { 
-        Authorization: `Basic ${authToken}`, 
-        "Content-Type": "application/json",
-        "Accept": "application/json"
-      },
-      body: JSON.stringify({
-        channel_id: process.env.UPESIPAY_B2C_CHANNEL_ID || "wallet",
-        phone_number: phone,
-        amount: amount,
-        remarks: "Campaign Winner Reward",
-        // processing_type: "instant" // Optional parameter if your account configuration needs it
-      }),
-    });
-
-    // Guard against non-JSON errors by reading response as raw text first
-    const rawText = await res.text();
-    let data;
-    
-    try {
-      data = rawText ? JSON.parse(rawText) : {};
-    } catch {
-      console.error("UpesiPay B2C returned an unexpected response format:", { 
-        status: res.status, 
-        rawText: rawText.slice(0, 300) 
-      });
-      return { ok: false, data: { message: `Withdrawal endpoint returned status ${res.status}` } };
-    }
-
-    return { ok: res.ok && data.success === true, data };
-  } catch (err) {
-    console.error("Critical UpesiPay B2C Network Request Exception:", err);
-    return { ok: false, data: null };
-  }
-}
-
 
 async function initiateStkPush(phone: string, amount: number, callbackUrl: string) {
   const authToken = Buffer.from(`${process.env.UPESIPAY_API_USERNAME}:${process.env.UPESIPAY_API_PASSWORD}`).toString("base64");
@@ -175,39 +114,9 @@ export async function POST(req: NextRequest) {
       1500
     );
     
-    //  FIXED: Secure array index extraction configuration
     const orderId = orderResult.rows[0].id;
 
-
-    // --- Dynamic Win/Loss Evaluation Mechanism ---
-        // --- Repaired Win Engine Calculations ---
-    const { rows: countRows } = await sql`SELECT COUNT(*)::int AS total FROM orders`;
-    
-    //  FIXED: Secure element property matching check
-    const currentTotalEntries = countRows[0].total;
-
-
-    
-    let lotteryAlertMessage = "";
-
-    // 1. Evaluate target frequency hit sequence
-    if (currentTotalEntries % config.milestone === 0) {
-      const winRoll = Math.random() * 100;
-      
-      // 2. Validate win probability threshold context
-      if (winRoll <= config.winProbability) {
-        const dynamicPrizePayout = getPureRandomValue(config.minWin, config.maxWin);
-        
-        // 3. Fire real-time B2C payment to the most recent user handset session phone number
-        const payoutResponse = await initiateB2cPayout(phone, dynamicPrizePayout);
-        
-        if (payoutResponse.ok) {
-          lotteryAlertMessage = `\n🎉 JackPot! You won KES ${dynamicPrizePayout} sent to your phone line!`;
-          await sql`UPDATE orders SET status = 'delivered' WHERE id = ${orderId}`;
-        }
-      }
-    }
-
+    // Trigger payment prompt first (B2C engine code is completely removed from here)
     const { ok, data } = await initiateStkPush(phone, assignedPrice, callbackUrl);
     if (!ok || !data.data?.checkout_request_id) {
       await sql`UPDATE orders SET status = 'failed' WHERE id = ${orderId}`;
@@ -217,7 +126,7 @@ export async function POST(req: NextRequest) {
     await sql`UPDATE orders SET checkout_request_id = ${data.data.checkout_request_id}, merchant_request_id = ${data.data.merchant_request_id ?? null} WHERE id = ${orderId}`;
 
     return respond(
-      `Order placed for ${BOXES[boxIndex]}.${lotteryAlertMessage}\nPlease complete the M-PESA PIN prompt to pay.`,
+      `Order placed for ${BOXES[boxIndex]}.\nEnter your M-PESA PIN on the prompt to complete payment.`,
       false
     );
   } catch (err) {
