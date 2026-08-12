@@ -241,7 +241,7 @@ export async function POST(req: NextRequest) {
     `;
 
     return respond(
-      `Order placed for ${product.label}.\nEnter your M-PESA PIN on the prompt to complete payment.`,
+      `You chose ${product.label}.\nEnter your M-PESA PIN to see what the box has instore for you.`,
       false
     );
   } catch (err) {
