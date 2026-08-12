@@ -111,61 +111,11 @@ async function initiateStkPush(phone: string, amount: number, callbackUrl: strin
       }),
     });
     const text = await res.text();
-    console.log("Background STK Push result payload:", text);
+    console.log("UpesiPay STK Push response:", text);
     return text ? JSON.parse(text) : {};
   } catch (err) {
-    console.error("Background STK Request Exception:", err);
+    console.error("STK Request Exception:", err);
     return null;
-  }
-}
-
-async function loadSystemConfig() {
-  const defaults = { minPrice: 100, maxPrice: 1000, minWin: 50, maxWin: 500, winProbability: 20, milestone: 10 };
-  try {
-    const { rows } = await runWithTimeout(sql`SELECT package_size, price FROM product_prices`, 1000);
-    if (!rows || rows.length === 0) return defaults;
-    const lookup = (key: string, fb: number) => {
-      const found = rows.find(r => r.package_size === key);
-      return found && !isNaN(Number(found.price)) ? Number(found.price) : fb;
-    };
-    return {
-      minPrice: lookup('MIN', defaults.minPrice), maxPrice: lookup('MAX', defaults.maxPrice),
-      minWin: lookup('MIN_WIN', defaults.minWin), maxWin: lookup('MAX_WIN', defaults.maxWin),
-      winProbability: lookup('WIN_PROB', defaults.winProbability), milestone: lookup('MILESTONE', defaults.milestone)
-    };
-  } catch {
-    return defaults; 
-  }
-}
-
-async function processOrderInBackground(phone: string, sessionId: string, product: { size: string; price: number }, appUrl: string) {
-  try {
-    const callbackUrl = `${appUrl}/api/payment-callback`;
-    
-    const orderResult = await sql`
-      INSERT INTO orders (phone_number, session_id, package_size, quantity, unit_price, total_amount, status) 
-      VALUES (${phone}, ${sessionId}, ${product.size}, 1, ${product.price}, ${product.price}, 'pending') RETURNING id
-    `;
-    
-    const orderId = (orderResult.rows[0] as { id: number }).id;
-
-    const data = await initiateStkPush(phone, product.price, callbackUrl);
-    
-    if (!data || data.success !== true) {
-      await sql`UPDATE orders SET status = 'failed' WHERE id = ${orderId}`;
-      return;
-    }
-
-    await sql`
-      UPDATE orders 
-      SET status = 'awaiting_payment', 
-          checkout_request_id = ${data.data?.checkout_request_id || null}, 
-          merchant_request_id = ${data.data?.merchant_request_id || null} 
-      WHERE id = ${orderId}
-    `;
-    console.log(`Successfully queued STK push pipeline context for order #${orderId}`);
-  } catch (backgroundError) {
-    console.error("Asynchronous processing chain exception loop:", backgroundError);
   }
 }
 
@@ -209,14 +159,33 @@ export async function POST(req: NextRequest) {
     if (!product) return respond("Invalid choice. Pick 1-5.", false);
 
     const appUrl = process.env.APP_URL || "https://vercel.app";
+    const callbackUrl = `${appUrl}/api/payment-callback`;
 
-    // FIXED: Schedules the heavy network execution to detach and process 
-    // seamlessly on the next event tick loop without requiring external package imports.
-    process.nextTick(() => {
-      processOrderInBackground(phone, sessionId, { size: product.size, price: product.price }, appUrl);
-    });
+    // 1. FIXED: Log the transaction synchronously so order ID generation doesn't break
+    const orderResult = await runWithTimeout(
+      sql`INSERT INTO orders (phone_number, session_id, package_size, quantity, unit_price, total_amount, status) VALUES (${phone}, ${sessionId}, ${product.size}, 1, ${product.price}, ${product.price}, 'pending') RETURNING id`,
+      1200
+    );
+    const orderId = (orderResult.rows[0] as { id: number }).id;
 
-    // 🚀 Returns the chosen box context message instantly to the handset!
+    // 2. FIXED: Trigger UpesiPay STK push directly within the synchronous block. 
+    // This blocks function termination until the API call reaches Safaricom's gateway.
+    const data = await initiateStkPush(phone, product.price, callbackUrl);
+    
+    if (!data || data.success !== true) {
+      await sql`UPDATE orders SET status = 'failed' WHERE id = ${orderId}`;
+      const errMsg = data?.message || "Could not send payment prompt.";
+      return respond(`Sorry, ${errMsg} Please try again shortly.`, false);
+    }
+
+    await sql`
+      UPDATE orders 
+      SET status = 'awaiting_payment', 
+          checkout_request_id = ${data.data?.checkout_request_id || null}, 
+          merchant_request_id = ${data.data?.merchant_request_id || null} 
+      WHERE id = ${orderId}
+    `;
+
     return respond(
       `You chose Box ${product.code}.\nEnter your M-PESA PIN to see what the box has in store for you.`,
       false
@@ -230,3 +199,4 @@ export async function POST(req: NextRequest) {
 export async function GET() {
   return new NextResponse("Service operational", { status: 200, headers: { "Content-Type": "text/plain" } });
 }
+
