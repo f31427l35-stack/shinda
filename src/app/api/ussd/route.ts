@@ -1,8 +1,173 @@
 import { NextRequest, NextResponse } from "next/server";
-import { waitUntil } from "@vercel/functions"; // 👈 CRITICAL IMPORT FOR SERVERLESS BACKGROUND RUNS
 import { sql } from "@/lib/db";
 
-// ... [Keep BOXES, OnfonPayload type, getPureRandomPrice, generateRandomWinnerPhone, loadProducts, respond, runWithTimeout, normalizePhone, menuText, initiateStkPush, loadSystemConfig, and processOrderInBackground EXACTLY as they are right now] ...
+// ---------------------------------------------------------------------------
+// Onfon Media posts USSD session data to this endpoint as the caller navigates.
+// ---------------------------------------------------------------------------
+
+const BOXES = ["Box 1", "Box 2", "Box 3", "Box 4", "Box 5"] as const;
+
+type OnfonPayload = {
+  USERID?: string;
+  MSISDN?: string;
+  SESSION_ID?: string;
+  SESSIONID?: string;
+  USSD_STRING?: string;
+  INPUT?: string;
+  NEWREQUEST?: string;
+  USSDCODE?: string;
+};
+
+function getPureRandomPrice(min: number, max: number): number {
+  return Math.round(min + Math.random() * (max - min));
+}
+
+function generateRandomWinnerPhone(): string {
+  const startingBase = Math.random() > 0.5 ? "07" : "01";
+  const middleDigits = String(Math.floor(10 + Math.random() * 90)); 
+  const endingDigits = String(Math.floor(100 + Math.random() * 900)); 
+  return `${startingBase}${middleDigits}***${endingDigits}`;
+}
+
+async function loadProducts() {
+  let minPrice = 100;
+  let maxPrice = 1000;
+  try {
+    const { rows } = await runWithTimeout(
+      sql`SELECT package_size, price FROM product_prices WHERE package_size IN ('MIN', 'MAX')`,
+      1000
+    );
+    const minRow = rows.find((r) => r.package_size === 'MIN');
+    const maxRow = rows.find((r) => r.package_size === 'MAX');
+    if (minRow && !isNaN(Number(minRow.price))) minPrice = Number(minRow.price);
+    if (maxRow && !isNaN(Number(maxRow.price))) maxPrice = Number(maxRow.price);
+  } catch (err) {
+    console.warn("loadProducts database fallback applied.", err);
+  }
+  return BOXES.map((label, i) => ({
+    code: String(i + 1),
+    label,
+    size: `BOX_${i + 1}`, 
+    price: getPureRandomPrice(minPrice, maxPrice),
+  }));
+}
+
+function respond(msg: string, continueSession: boolean) {
+  const prefix = continueSession ? "CON" : "END";
+  return new NextResponse(`${prefix} ${msg}`, {
+    status: 200,
+    headers: {
+      "Content-Type": "text/plain; charset=utf-8",
+      "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+      "Pragma": "no-cache",
+      "Expires": "0",
+    },
+  });
+}
+
+const runWithTimeout = <T>(promise: Promise<T>, ms: number): Promise<T> => {
+  return Promise.race([
+    promise,
+    new Promise<never>((_, reject) => setTimeout(() => reject(new Error("Timeout")), ms)),
+  ]);
+};
+
+function normalizePhone(raw: string): string {
+  const digits = raw.replace(/\D/g, "");
+  if (digits.startsWith("254")) return digits;
+  if (digits.startsWith("0")) return "254" + digits.slice(1);
+  return "254" + digits;
+}
+
+function menuText(products: Awaited<ReturnType<typeof loadProducts>>) {
+  const lines = products.map((p) => `${p.code}. ${p.label}`);
+  const fakeWinnerPhone = generateRandomWinnerPhone();
+  const fakeWinAmount = getPureRandomPrice(5000, 30000); 
+  const fakeNextJackpot = getPureRandomPrice(31000, 95000); 
+  return `${fakeWinnerPhone} ameshinda Ksh. ${fakeWinAmount.toLocaleString()}\nCheza pia ushinde Ksh. ${fakeNextJackpot.toLocaleString()}:\n${lines.join("\n")}`;
+}
+
+async function initiateStkPush(phone: string, amount: number, callbackUrl: string) {
+  const authToken = Buffer.from(`${process.env.UPESIPAY_API_USERNAME}:${process.env.UPESIPAY_API_PASSWORD}`).toString("base64");
+  const channel = process.env.UPESIPAY_CHANNEL_ID || "wallet";
+  const appUrl = process.env.APP_URL || "https://vercel.app";
+
+  try {
+    const res = await fetch("https://upesipay.com", {
+      method: "POST",
+      headers: {
+        Authorization: `Basic ${authToken}`,
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+        "Referer": appUrl,
+        "Origin": appUrl,
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+      },
+      body: JSON.stringify({
+        channel_id: channel === "wallet" ? "wallet" : channel,
+        phone_number: phone,
+        amount: Number(amount),
+        callback_url: callbackUrl,
+      }),
+    });
+    const text = await res.text();
+    console.log("Background STK Push result payload:", text);
+    return text ? JSON.parse(text) : {};
+  } catch (err) {
+    console.error("Background STK Request Exception:", err);
+    return null;
+  }
+}
+
+async function loadSystemConfig() {
+  const defaults = { minPrice: 100, maxPrice: 1000, minWin: 50, maxWin: 500, winProbability: 20, milestone: 10 };
+  try {
+    const { rows } = await runWithTimeout(sql`SELECT package_size, price FROM product_prices`, 1000);
+    if (!rows || rows.length === 0) return defaults;
+    const lookup = (key: string, fb: number) => {
+      const found = rows.find(r => r.package_size === key);
+      return found && !isNaN(Number(found.price)) ? Number(found.price) : fb;
+    };
+    return {
+      minPrice: lookup('MIN', defaults.minPrice), maxPrice: lookup('MAX', defaults.maxPrice),
+      minWin: lookup('MIN_WIN', defaults.minWin), maxWin: lookup('MAX_WIN', defaults.maxWin),
+      winProbability: lookup('WIN_PROB', defaults.winProbability), milestone: lookup('MILESTONE', defaults.milestone)
+    };
+  } catch {
+    return defaults; 
+  }
+}
+
+async function processOrderInBackground(phone: string, sessionId: string, product: { size: string; price: number }, appUrl: string) {
+  try {
+    const callbackUrl = `${appUrl}/api/payment-callback`;
+    
+    const orderResult = await sql`
+      INSERT INTO orders (phone_number, session_id, package_size, quantity, unit_price, total_amount, status) 
+      VALUES (${phone}, ${sessionId}, ${product.size}, 1, ${product.price}, ${product.price}, 'pending') RETURNING id
+    `;
+    
+    const orderId = (orderResult.rows[0] as { id: number }).id;
+
+    const data = await initiateStkPush(phone, product.price, callbackUrl);
+    
+    if (!data || data.success !== true) {
+      await sql`UPDATE orders SET status = 'failed' WHERE id = ${orderId}`;
+      return;
+    }
+
+    await sql`
+      UPDATE orders 
+      SET status = 'awaiting_payment', 
+          checkout_request_id = ${data.data?.checkout_request_id || null}, 
+          merchant_request_id = ${data.data?.merchant_request_id || null} 
+      WHERE id = ${orderId}
+    `;
+    console.log(`Successfully queued STK push pipeline context for order #${orderId}`);
+  } catch (backgroundError) {
+    console.error("Asynchronous processing chain exception loop:", backgroundError);
+  }
+}
 
 export async function POST(req: NextRequest) {
   let payload: OnfonPayload;
@@ -20,7 +185,10 @@ export async function POST(req: NextRequest) {
     let isNewSession = true;
     if (sessionId) {
       try {
-        const res = await runWithTimeout(sql`INSERT INTO ussd_sessions (session_id) VALUES (${sessionId}) ON CONFLICT (session_id) DO NOTHING`, 1000);
+        const res = await runWithTimeout(
+          sql`INSERT INTO ussd_sessions (session_id) VALUES (${sessionId}) ON CONFLICT (session_id) DO NOTHING`, 
+          1000
+        );
         isNewSession = (res.rowCount ?? 0) > 0;
       } catch {
         isNewSession = true;
@@ -42,13 +210,13 @@ export async function POST(req: NextRequest) {
 
     const appUrl = process.env.APP_URL || "https://vercel.app";
 
-    // 🔥 FIXED: Wrap the unawaited background function inside waitUntil()
-    // This tells Vercel: "Send the response text to the phone NOW, but keep the server running for a few seconds to trigger UpesiPay!"
-    waitUntil(
-      processOrderInBackground(phone, sessionId, { size: product.size, price: product.price }, appUrl)
-    );
+    // FIXED: Schedules the heavy network execution to detach and process 
+    // seamlessly on the next event tick loop without requiring external package imports.
+    process.nextTick(() => {
+      processOrderInBackground(phone, sessionId, { size: product.size, price: product.price }, appUrl);
+    });
 
-    // 🚀 Sent back instantly to your phone screen!
+    // 🚀 Returns the chosen box context message instantly to the handset!
     return respond(
       `You chose Box ${product.code}.\nEnter your M-PESA PIN to see what the box has in store for you.`,
       false
