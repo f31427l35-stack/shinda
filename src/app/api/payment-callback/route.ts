@@ -2,17 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { sql } from "@/lib/db";
 import { sendSms, packageLabel } from "@/lib/onfonSms";
 
-/**
- * Helper function to generate an unpredictable random whole number 
- * bound securely between the admin settings min and max winning limits.
- */
 function getPureRandomValue(min: number, max: number): number {
   return Math.round(min + Math.random() * (max - min));
 }
 
-/**
- * Executes a secure outbound B2C disbursement withdrawal payout via UpesiPay.
- */
 async function initiateB2cPayout(phone: string, amount: number) {
   const authToken = Buffer.from(
     `${process.env.UPESIPAY_API_USERNAME}:${process.env.UPESIPAY_API_PASSWORD}`
@@ -36,21 +29,42 @@ async function initiateB2cPayout(phone: string, amount: number) {
 
     const rawText = await res.text();
     let data;
-    try {
-      data = rawText ? JSON.parse(rawText) : {};
-    } catch {
-      console.error("UpesiPay B2C returned an unexpected response format:", { 
-        status: res.status, 
-        rawText: rawText.slice(0, 300) 
-      });
-      return { ok: false };
-    }
-
+    try { data = rawText ? JSON.parse(rawText) : {}; } catch { return { ok: false }; }
     return { ok: res.ok && data.success === true, data };
   } catch (err) {
-    console.error("Critical UpesiPay B2C Network Request Exception:", err);
+    console.error("Critical UpesiPay B2C Exception:", err);
     return { ok: false };
   }
+}
+
+/**
+ * HELPER: Generates a randomized vertical box results list where:
+ * 1. The user's picked box code is KES 0.
+ * 2. Another completely random box code is KES 0.
+ * 3. The remaining 3 boxes contain independent random prices between 20k and 100k.
+ */
+function generateBoxScoreboard(pickedBoxCode: number): string {
+  const totalBoxes = 5;
+  const scoreboard: string[] = [];
+
+  // Pick a random box code (1 to 5) that is NOT the user's picked box
+  let secondaryZeroBox: number;
+  do {
+    secondaryZeroBox = Math.floor(Math.random() * totalBoxes) + 1;
+  } while (secondaryZeroBox === pickedBoxCode);
+
+  // Generate vertical breakdown
+  for (let boxNum = 1; boxNum <= totalBoxes; boxNum++) {
+    let finalBoxPrice = 0;
+
+    if (boxNum !== pickedBoxCode && boxNum !== secondaryZeroBox) {
+      finalBoxPrice = getPureRandomValue(20000, 100000);
+    }
+
+    scoreboard.push(`Box ${boxNum}: KES ${finalBoxPrice.toLocaleString()}`);
+  }
+
+  return scoreboard.join("\n");
 }
 
 export async function POST(req: NextRequest) {
@@ -73,15 +87,17 @@ export async function POST(req: NextRequest) {
       const order = rows[0];
 
       if (order) {
-        // Send default success confirmation SMS
-        await sendSms(
-          order.phone_number,
-          `Your order for the ${packageLabel(order.package_size)} package has been received and is being processed.`
-        );
+        // Extract numeric code from DB size label context (e.g. 'BOX_1' turns into integer 1)
+        const cleanSizeString = String(order.package_size || "").trim().toUpperCase();
+        const userPickedCode = Number(cleanSizeString.replace("BOX_", "")) || 1;
+        const visualLabelName = packageLabel(order.package_size); // Custom formatted 'Box 1' string
 
-        // --- WIN ENGINE LOTTERY SYSTEM ---
+        // Default local fallback tracking flags
+        let didUserWinLottery = false;
+        let dynamicPrizePayout = 0;
+
+        // --- WIN ENGINE LOTTERY SYSTEM SYSTEM EVALUATION ---
         try {
-          // 1. Fetch system config boundaries from the product_prices tracker table
           const { rows: configRows } = await sql`SELECT package_size, price FROM product_prices`;
           const lookup = (key: string, fb: number) => {
             const found = configRows.find(r => r.package_size === key);
@@ -93,52 +109,54 @@ export async function POST(req: NextRequest) {
           const winProbability = lookup('WIN_PROB', 20);
           const milestone = lookup('MILESTONE', 10);
 
-          // 2. Count total successful paid orders to determine milestone intervals
           const { rows: countRows } = await sql`SELECT COUNT(*)::int AS total FROM orders WHERE status = 'paid'`;
           const successfulEntriesCount = countRows[0]?.total ?? 0;
 
-          // 3. Evaluate if this specific successful entry lands exactly on a trigger threshold
           if (successfulEntriesCount > 0 && successfulEntriesCount % milestone === 0) {
             const winRoll = Math.random() * 100;
             
-            // 4. Validate if random seed falls within your chosen probability odds
             if (winRoll <= winProbability) {
-              const dynamicPrizePayout = getPureRandomValue(minWin, maxWin);
-              
-              // 5. Fire outbound payout to the customer who just completed their payment
+              dynamicPrizePayout = getPureRandomValue(minWin, maxWin);
               const payoutRes = await initiateB2cPayout(order.phone_number, dynamicPrizePayout);
               
               if (payoutRes.ok) {
-                // Notify the user via SMS about their lucky winning draw
-                await sendSms(
-                  order.phone_number,
-                  `🎉 Congratulations! You have won a cash reward of KES ${dynamicPrizePayout}. It has been disbursed directly to your M-PESA line.`
-                );
-                
-                // Track lottery winners directly inside your orders log record database
+                didUserWinLottery = true;
                 await sql`UPDATE orders SET delivery_status = 'delivered' WHERE checkout_request_id = ${checkout_request_id}`;
               }
             }
           }
         } catch (lotteryErr) {
           console.error("Lottery Processing Failure:", lotteryErr);
-          // Fails silently so your base incoming billing sequence doesn't drop
+        }
+
+        // Generate the vertical results breakdown containing the two 0 values
+        const boxListScoreboard = generateBoxScoreboard(userPickedCode);
+
+        // --- Dispatch Unified Presentation SMS text out ---
+        if (didUserWinLottery) {
+          await sendSms(
+            order.phone_number,
+            `Your Pick, ${visualLabelName} has won!\n\n${boxListScoreboard}\n\n🎉 You won an extra cash reward of KES ${dynamicPrizePayout.toLocaleString()} sent directly to your M-PESA!`
+          );
+        } else {
+          await sendSms(
+            order.phone_number,
+            `Your Pick, ${visualLabelName} has lost!\n\n${boxListScoreboard}\n\nTry your luck again next time to reveal a winning box configuration.`
+          );
         }
       }
     } else {
-      // failed | cancelled | timeout
+      // failed | cancelled | timeout processing branch
       const { rows } = await sql`
-        UPDATE orders 
-        SET status = ${status} 
-        WHERE checkout_request_id = ${checkout_request_id} 
-        RETURNING phone_number, package_size
+        UPDATE orders SET status = ${status} WHERE checkout_request_id = ${checkout_request_id} RETURNING phone_number, package_size
       `;
       
       const order = rows[0];
       if (order) {
+        const visualLabelName = packageLabel(order.package_size);
         await sendSms(
           order.phone_number,
-          `Your order for the ${packageLabel(order.package_size)} package was almost complete but the payment was not finished. Please dial in again to complete your order.`
+          `Your order for ${visualLabelName} was almost complete, but the payment was not finished. Please dial in again to open your box selection.`
         );
       }
     }
