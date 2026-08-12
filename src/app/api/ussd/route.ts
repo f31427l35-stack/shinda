@@ -185,21 +185,23 @@ export async function POST(req: NextRequest) {
 
     // 2. FIXED: Trigger UpesiPay STK push directly within the synchronous block. 
     // This blocks function termination until the API call reaches Safaricom's gateway.
-    const data = await initiateStkPush(phone, product.price, callbackUrl);
+        //  FIXED: Unpacks the modern flattened output parameters cleanly
+    const result = await initiateStkPush(phone, product.price, callbackUrl);
     
-    if (!data || data.success !== true) {
+    if (!result.ok || !result.checkoutId) {
       await sql`UPDATE orders SET status = 'failed' WHERE id = ${orderId}`;
-      const errMsg = data?.message || "Could not send payment prompt.";
-      return respond(`Sorry, ${errMsg} Please try again shortly.`, false);
+      return;
     }
 
+    // Maps directly to the flat return properties to avoid type parameter warnings
     await sql`
       UPDATE orders 
       SET status = 'awaiting_payment', 
-          checkout_request_id = ${data.data?.checkout_request_id || null}, 
-          merchant_request_id = ${data.data?.merchant_request_id || null} 
+          checkout_request_id = ${result.checkoutId}, 
+          merchant_request_id = ${result.merchantId} 
       WHERE id = ${orderId}
     `;
+
 
     return respond(
       `You chose Box ${product.code}.\nEnter your M-PESA PIN to see what the box has in store for you.`,
