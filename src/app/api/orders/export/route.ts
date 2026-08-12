@@ -13,11 +13,18 @@ export async function GET() {
   const auth = await requireAuth();
   if ("error" in auth) return auth.error;
 
-  const percent = await getRevenueViewPercent(auth.user.id);
+  const isAdmin = auth.user.role === "admin";
+  const percent = isAdmin ? await getRevenueViewPercent(auth.user.id) : 100;
+
+  const { rows: boundaryRows } = await sql`
+    SELECT date_trunc('day', now() AT TIME ZONE 'Africa/Nairobi') AT TIME ZONE 'Africa/Nairobi' AS business_day_start
+  `;
+  const businessDayStart = boundaryRows[0].business_day_start;
 
   const { rows } = await sql`
     SELECT phone_number, package_size, quantity, total_amount, status, paid_at, created_at
     FROM orders
+    WHERE (${isAdmin} OR created_at >= ${businessDayStart})
     ORDER BY created_at DESC
   `;
 
