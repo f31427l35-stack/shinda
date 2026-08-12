@@ -12,9 +12,17 @@ export async function GET() {
   const auth = await requireAuth();
   if ("error" in auth) return auth.error;
 
+  const isAdmin = auth.user.role === "admin";
+
+  const { rows: boundaryRows } = await sql`
+    SELECT date_trunc('day', now() AT TIME ZONE 'Africa/Nairobi') AT TIME ZONE 'Africa/Nairobi' AS business_day_start
+  `;
+  const businessDayStart = boundaryRows[0].business_day_start;
+
   const { rows } = await sql`
     SELECT phone_number, MIN(created_at) AS first_order_at, COUNT(*)::int AS orders_count
     FROM orders
+    WHERE (${isAdmin} OR created_at >= ${businessDayStart})
     GROUP BY phone_number
     ORDER BY first_order_at DESC
   `;
