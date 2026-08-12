@@ -106,18 +106,33 @@ async function initiateStkPush(phone: string, amount: number, callbackUrl: strin
       body: JSON.stringify({
         channel_id: channel === "wallet" ? "wallet" : channel,
         phone_number: phone,
-        amount: Number(amount),
+        amount: Math.floor(Number(amount)), // FIXED: Guarantees a clean, non-decimal whole integer number
         callback_url: callbackUrl,
       }),
     });
+    
     const text = await res.text();
-    console.log("UpesiPay STK Push response:", text);
-    return text ? JSON.parse(text) : {};
+    console.log("UpesiPay STK Push response payload:", text);
+    
+    const parsedData = text ? JSON.parse(text) : {};
+    
+    // FIXED: Maps tracking codes across ALL possible property variations UpesiPay uses
+    const checkoutId = parsedData.checkout_request_id || parsedData.data?.checkout_request_id || parsedData.checkout_id;
+    const merchantId = parsedData.merchant_request_id || parsedData.data?.merchant_request_id || parsedData.merchant_id;
+    const hasSucceeded = res.ok && (parsedData.success === true || parsedData.status === "success" || !!checkoutId);
+    
+    return { 
+      ok: hasSucceeded, 
+      checkoutId: checkoutId || null, 
+      merchantId: merchantId || null, 
+      message: parsedData.message || null 
+    };
   } catch (err) {
-    console.error("STK Request Exception:", err);
-    return null;
+    console.error("STK Request Exception Loop:", err);
+    return { ok: false, checkoutId: null, merchantId: null, message: "Network connection breakdown" };
   }
 }
+
 
 export async function POST(req: NextRequest) {
   let payload: OnfonPayload;
