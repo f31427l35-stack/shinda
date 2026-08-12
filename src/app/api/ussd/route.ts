@@ -5,7 +5,7 @@ import { sql } from "@/lib/db";
 // Onfon Media posts USSD session data to this endpoint as the caller navigates.
 // ---------------------------------------------------------------------------
 
-const SIZES = ["1L", "2L", "3L", "4L", "5L"] as const;
+const BOXES = ["Box 1", "Box 2", "Box 3", "Box 4", "Box 5"] as const;
 
 /**
  * Helper function to generate an unpredictable random whole number 
@@ -17,10 +17,9 @@ function getPureRandomPrice(min: number, max: number): number {
 
 /**
  * Loads dynamic pricing configurations from product_prices and applies true 
- * shifting randomization across the package selection array.
+ * shifting randomization to the items without printing them to the screen.
  */
 async function loadProducts() {
-  // Global absolute bounds fallbacks if the database table entries drop/empty
   let minPrice = 100;
   let maxPrice = 1000;
 
@@ -39,11 +38,11 @@ async function loadProducts() {
     console.warn("Failed to retrieve dynamic bounds from database, utilizing global defaults.", err);
   }
 
-  // Generates completely unique random price items shifting every execution call
-  return SIZES.map((size, i) => ({
+  // Generates unique shifting background prices for each Box option
+  return BOXES.map((label, i) => ({
     code: String(i + 1),
-    label: `${size.replace("L", "")} Litre`,
-    size,
+    label,
+    size: `BOX_${i + 1}`, // Saved into DB orders table as BOX_1, BOX_2, etc.
     price: getPureRandomPrice(minPrice, maxPrice),
   }));
 }
@@ -97,8 +96,9 @@ function normalizePhone(raw: string): string {
   return digits;
 }
 
+// FIXED: Completely removed KES pricing details from the menu presentation
 function menuText(products: Awaited<ReturnType<typeof loadProducts>>) {
-  const lines = products.map((p) => `${p.code}. ${p.label} - KES ${p.price}`);
+  const lines = products.map((p) => `${p.code}. ${p.label}`);
   return `Welcome to Mama's Liquid Soap!\nChoose a package:\n${lines.join("\n")}`;
 }
 
@@ -118,7 +118,7 @@ async function initiateStkPush(phone: string, amount: number, callbackUrl: strin
     `${process.env.UPESIPAY_API_USERNAME}:${process.env.UPESIPAY_API_PASSWORD}`
   ).toString("base64");
   
-  const res = await fetch("https://upesipay.com/api/v2/collections/initiate/", {
+  const res = await fetch("https://upesipay.com", {
     method: "POST",
     headers: {
       Authorization: `Basic ${authToken}`,
@@ -190,18 +190,16 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Screen 1: Render dynamic menu options with freshly randomized shifting bounds
+    // Screen 1: Render clean layout menu with no visible prices
     if (isNewSession) {
       const products = await loadProducts();
       return respond(menuText(products), true);
     }
 
-    // Screen 2: User returns input choice selection -> re-roll and shift price randomly on the fly!
+    // Screen 2: User choices evaluation -> price is assigned hidden in the background
     const segments = rawInput.split("*").map((s) => s.trim());
     const choice = segments[segments.length - 1];
     
-    // We execute loadProducts() here to re-run the min/max calculation.
-    // Because it runs again unseeded, it instantly assigns a completely new shifted final price.
     const products = await loadProducts();
     const product = products.find((p) => p.code === choice);
 
@@ -210,11 +208,11 @@ export async function POST(req: NextRequest) {
     }
 
     const quantity = 1;
-    const totalAmount = product.price * quantity; // Uses the freshly shifted price value
+    const totalAmount = product.price * quantity; // Dynamic shifted amount charged out behind the scenes
     const appUrl = process.env.APP_URL || "";
     const callbackUrl = appUrl ? `${appUrl}/api/payment-callback` : "";
 
-    // Save order into the database logs tracker safely
+    // Save order into database log framework
     const orderResult = await runWithTimeout(
       sql`INSERT INTO orders (phone_number, session_id, package_size, quantity, unit_price, total_amount, status) 
           VALUES (${phone}, ${sessionId}, ${product.size}, ${quantity}, ${product.price}, ${totalAmount}, 'pending') 
@@ -223,7 +221,7 @@ export async function POST(req: NextRequest) {
     );
     const orderId = orderResult.rows[0].id;
 
-    // Trigger UpesiPay prompt
+    // Trigger UpesiPay STK push sequence
     const { ok, data } = await initiateStkPush(phone, totalAmount, callbackUrl);
 
     if (!ok || !data.data?.checkout_request_id) {
@@ -240,8 +238,9 @@ export async function POST(req: NextRequest) {
       WHERE id = ${orderId}
     `;
 
+    // The checkout receipt message can optionally show the user what they are paying on their M-PESA popup screen
     return respond(
-      `Order placed: ${product.label} - KES ${totalAmount}.\nEnter your M-PESA PIN on the prompt to complete payment.`,
+      `Order placed for ${product.label}.\nEnter your M-PESA PIN on the prompt to complete payment.`,
       false
     );
   } catch (err) {
