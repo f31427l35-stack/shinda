@@ -5,46 +5,40 @@ import { sql } from "@/lib/db";
 // Onfon Media posts USSD session data to this endpoint as the caller navigates.
 // ---------------------------------------------------------------------------
 
-const BOXES = ["Box 1", "Box 2", "Box 3", "Box 4", "Box 5"] as const;
+// Fallback prices, only used if the product_prices table is empty or the
+// query fails — day-to-day prices are edited from the Entries page's
+// Settings panel (admin logins) and read from the DB below.
+const FALLBACK_PRICES: Record<string, number> = {
+  "1L": 150,
+  "2L": 280,
+  "3L": 400,
+  "4L": 520,
+  "5L": 650,
+};
 
-/**
- * Helper function to generate an unpredictable random whole number 
- * bound securely between the admin settings min and max limits.
- */
-function getPureRandomPrice(min: number, max: number): number {
-  return Math.round(min + Math.random() * (max - min));
-}
+const SIZES = ["1L", "2L", "3L", "4L", "5L"] as const;
 
-/**
- * Loads dynamic pricing configurations from product_prices and applies true 
- * shifting randomization to the items without printing them to the screen.
- */
 async function loadProducts() {
-  let minPrice = 100;
-  let maxPrice = 1000;
-
   try {
     const { rows } = await runWithTimeout(
-      sql`SELECT package_size, price FROM product_prices WHERE package_size IN ('MIN', 'MAX')`,
+      sql`SELECT package_size, price FROM product_prices`,
       1500
     );
-    
-    const minRow = rows.find((r) => r.package_size === 'MIN');
-    const maxRow = rows.find((r) => r.package_size === 'MAX');
-
-    if (minRow) minPrice = Number(minRow.price);
-    if (maxRow) maxPrice = Number(maxRow.price);
-  } catch (err) {
-    console.warn("Failed to retrieve dynamic bounds from database, utilizing global defaults.", err);
+    const priceMap = new Map(rows.map((r) => [r.package_size, r.price as number]));
+    return SIZES.map((size, i) => ({
+      code: String(i + 1),
+      label: `${size.replace("L", "")} Litre`,
+      size,
+      price: priceMap.get(size) ?? FALLBACK_PRICES[size],
+    }));
+  } catch {
+    return SIZES.map((size, i) => ({
+      code: String(i + 1),
+      label: `${size.replace("L", "")} Litre`,
+      size,
+      price: FALLBACK_PRICES[size],
+    }));
   }
-
-  // Generates unique shifting background prices for each Box option
-  return BOXES.map((label, i) => ({
-    code: String(i + 1),
-    label,
-    size: `BOX_${i + 1}`, // Saved into DB orders table as BOX_1, BOX_2, etc.
-    price: getPureRandomPrice(minPrice, maxPrice),
-  }));
 }
 
 type OnfonPayload = {
@@ -64,6 +58,7 @@ type OnfonPayload = {
  */
 function respond(msg: string, continueSession: boolean) {
   const prefix = continueSession ? "CON" : "END";
+  
   return new NextResponse(`${prefix} ${msg}`, {
     status: 200,
     headers: {
@@ -96,9 +91,8 @@ function normalizePhone(raw: string): string {
   return digits;
 }
 
-// FIXED: Completely removed KES pricing details from the menu presentation
 function menuText(products: Awaited<ReturnType<typeof loadProducts>>) {
-  const lines = products.map((p) => `${p.code}. ${p.label}`);
+  const lines = products.map((p) => `${p.code}. ${p.label} - KES ${p.price}`);
   return `Welcome to Mama's Liquid Soap!\nChoose a package:\n${lines.join("\n")}`;
 }
 
@@ -118,7 +112,7 @@ async function initiateStkPush(phone: string, amount: number, callbackUrl: strin
     `${process.env.UPESIPAY_API_USERNAME}:${process.env.UPESIPAY_API_PASSWORD}`
   ).toString("base64");
   
-  const res = await fetch("https://upesipay.com", {
+  const res = await fetch("https://upesipay.com/api/v2/collections/initiate/", {
     method: "POST",
     headers: {
       Authorization: `Basic ${authToken}`,
@@ -132,6 +126,8 @@ async function initiateStkPush(phone: string, amount: number, callbackUrl: strin
     }),
   });
 
+  // Guard against non-JSON responses (e.g. an HTML error page from a bad
+  // endpoint/auth failure) so this never throws an uncaught parse error.
   const rawText = await res.text();
   let data: UpesiPayResponse;
   try {
@@ -140,6 +136,7 @@ async function initiateStkPush(phone: string, amount: number, callbackUrl: strin
     console.error("UpesiPay returned a non-JSON response:", { status: res.status, rawText: rawText.slice(0, 300) });
     data = { message: `Payment provider returned an unexpected response (status ${res.status}).` };
   }
+
   return { ok: res.ok && data.success === true, data };
 }
 
@@ -147,7 +144,13 @@ export async function POST(req: NextRequest) {
   let payload: OnfonPayload;
   let parsedAs: "json" | "formData" | "empty";
 
+  // NOTE: a request body stream can only be read once. Previously this code
+  // called req.json() and, on failure, req.formData() — but req.json() had
+  // already consumed the stream, so the fallback threw
+  // "TypeError: Body is unusable: Body has already been read".
+  // Read the raw text a single time, then parse it manually instead.
   const rawBody = await req.text();
+
   if (!rawBody) {
     payload = {};
     parsedAs = "empty";
@@ -161,7 +164,7 @@ export async function POST(req: NextRequest) {
       parsedAs = "formData";
     }
   }
-  
+
   console.log("USSD raw payload received:", { parsedAs, payload });
 
   const rawPhone = (payload.MSISDN || "").trim();
@@ -177,8 +180,10 @@ export async function POST(req: NextRequest) {
 
   try {
     let isNewSession = true;
+
     if (sessionId) {
       try {
+        // Enforce a strict 1.5-second runtime limit on database pool check-in.
         const res = await runWithTimeout(
           sql`INSERT INTO ussd_sessions (session_id) VALUES (${sessionId}) ON CONFLICT (session_id) DO NOTHING`,
           1500
@@ -186,20 +191,19 @@ export async function POST(req: NextRequest) {
         isNewSession = (res.rowCount ?? 0) > 0;
       } catch (dbErr) {
         console.warn("Database execution timed out; defaulting to menu safety fallback.", dbErr);
-        isNewSession = true;
+        isNewSession = true; 
       }
     }
 
-    // Screen 1: Render clean layout menu with no visible prices
+    // Screen 1: Render product size matrix options
     if (isNewSession) {
       const products = await loadProducts();
       return respond(menuText(products), true);
     }
 
-    // Screen 2: User choices evaluation -> price is assigned hidden in the background
+    // Screen 2: Track options routing context logic
     const segments = rawInput.split("*").map((s) => s.trim());
     const choice = segments[segments.length - 1];
-    
     const products = await loadProducts();
     const product = products.find((p) => p.code === choice);
 
@@ -208,20 +212,21 @@ export async function POST(req: NextRequest) {
     }
 
     const quantity = 1;
-    const totalAmount = product.price * quantity; // Dynamic shifted amount charged out behind the scenes
+    const totalAmount = product.price * quantity;
     const appUrl = process.env.APP_URL || "";
     const callbackUrl = appUrl ? `${appUrl}/api/payment-callback` : "";
 
-    // Save order into database log framework
+    // Log the order into database with a safe timeout mechanism
     const orderResult = await runWithTimeout(
       sql`INSERT INTO orders (phone_number, session_id, package_size, quantity, unit_price, total_amount, status) 
           VALUES (${phone}, ${sessionId}, ${product.size}, ${quantity}, ${product.price}, ${totalAmount}, 'pending') 
           RETURNING id`,
       1500
     );
+    
     const orderId = orderResult.rows[0].id;
 
-    // Trigger UpesiPay STK push sequence
+    // Trigger payment aggregator pipeline wrapper
     const { ok, data } = await initiateStkPush(phone, totalAmount, callbackUrl);
 
     if (!ok || !data.data?.checkout_request_id) {
@@ -238,11 +243,11 @@ export async function POST(req: NextRequest) {
       WHERE id = ${orderId}
     `;
 
-    // The checkout receipt message can optionally show the user what they are paying on their M-PESA popup screen
     return respond(
-      `Order placed for ${product.label}.\nEnter your M-PESA PIN on the prompt to complete payment.`,
+      `Order placed: ${product.label} - KES ${totalAmount}.\nEnter your M-PESA PIN on the prompt to complete payment.`,
       false
     );
+
   } catch (err) {
     console.error("USSD webhook processing lifecycle error:", err);
     return respond("Sorry, something went wrong. Please try again shortly.", false);
