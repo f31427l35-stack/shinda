@@ -45,15 +45,22 @@ export async function GET(req: NextRequest) {
       FROM ussd_sessions s
       WHERE s.created_at >= ${dayStart}::timestamptz
       GROUP BY 1
+    ),
+    filled AS (
+      SELECT
+        b.bucket,
+        COALESCE(r.revenue, 0) AS revenue,
+        COALESCE(s.sessions, 0) AS sessions
+      FROM buckets b
+      LEFT JOIN revenue_by_bucket r ON r.bucket = b.bucket
+      LEFT JOIN sessions_by_bucket s ON s.bucket = b.bucket
     )
     SELECT
-      to_char(b.bucket AT TIME ZONE 'Africa/Nairobi', 'HH24:MI') AS label,
-      COALESCE(r.revenue, 0) AS revenue,
-      COALESCE(s.sessions, 0) AS sessions
-    FROM buckets b
-    LEFT JOIN revenue_by_bucket r ON r.bucket = b.bucket
-    LEFT JOIN sessions_by_bucket s ON s.bucket = b.bucket
-    ORDER BY b.bucket
+      to_char(bucket AT TIME ZONE 'Africa/Nairobi', 'HH24:MI') AS label,
+      SUM(revenue) OVER (ORDER BY bucket)::int AS revenue,
+      SUM(sessions) OVER (ORDER BY bucket)::int AS sessions
+    FROM filled
+    ORDER BY bucket
   `;
 
   return NextResponse.json({ interval: key, series: rows });
