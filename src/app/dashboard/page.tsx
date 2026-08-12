@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import {
-  LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from "recharts";
 
 type Stats = {
@@ -40,12 +40,16 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  const [period, setPeriod] = useState<Period>("daily");
+  const [revenuePeriod, setRevenuePeriod] = useState<Period>("daily");
+  const [sessionsPeriod, setSessionsPeriod] = useState<Period>("daily");
+  
   const [sessions, setSessions] = useState<SessionPoint[]>([]);
   const [sessionsLoading, setSessionsLoading] = useState(true);
 
+  // Fetch metrics data when revenue filter changes
   useEffect(() => {
-    fetch("/api/stats")
+    setLoading(true);
+    fetch(`/api/stats?period=${revenuePeriod}`)
       .then((res) => {
         if (!res.ok) throw new Error("Failed to load stats");
         return res.json();
@@ -53,17 +57,18 @@ export default function DashboardPage() {
       .then(setStats)
       .catch(() => setError("Couldn't load dashboard data."))
       .finally(() => setLoading(false));
-  }, []);
+  }, [revenuePeriod]);
 
+  // Fetch session data when session filter changes
   useEffect(() => {
     setSessionsLoading(true);
-    fetch(`/api/sessions/stats?period=${period}`)
+    fetch(`/api/sessions/stats?period=${sessionsPeriod}`)
       .then((res) => res.json())
       .then((data) => setSessions(data.series || []))
       .finally(() => setSessionsLoading(false));
-  }, [period]);
+  }, [sessionsPeriod]);
 
-  if (loading) {
+  if (loading && !stats) {
     return <div className="p-8 text-neutral-500">Loading...</div>;
   }
   if (error || !stats) {
@@ -71,12 +76,12 @@ export default function DashboardPage() {
   }
 
   const chartData = stats.perDay.map((d) => ({
-    date: new Date(d.date).toLocaleDateString("en-US", { month: "numeric", day: "numeric" }),
+    date: formatBucketLabel(d.date, revenuePeriod),
     amount: d.amount,
   }));
 
   const sessionChartData = sessions.map((s) => ({
-    label: formatBucketLabel(s.bucket, period),
+    label: formatBucketLabel(s.bucket, sessionsPeriod),
     count: s.count,
   }));
 
@@ -91,11 +96,27 @@ export default function DashboardPage() {
         <StatCard label="Total customers" value={stats.totalCustomers.toLocaleString()} />
       </div>
 
+      {/* Revenue Section (Now a BarChart with dynamic filters) */}
       <div className="bg-neutral-900 rounded-xl p-4 sm:p-5 mb-4">
-        <h3 className="text-white font-semibold mb-4">Revenue per day (last 30 days)</h3>
+        <div className="flex items-center justify-between flex-wrap gap-3 mb-4">
+          <h3 className="text-white font-semibold">Revenue breakdown</h3>
+          <div className="flex items-center gap-1 bg-neutral-800 rounded-lg p-1">
+            {(["daily", "weekly", "monthly"] as Period[]).map((p) => (
+              <button
+                key={p}
+                onClick={() => setRevenuePeriod(p)}
+                className={`px-3 py-1.5 rounded-md text-xs font-medium capitalize transition-colors ${
+                  revenuePeriod === p ? "bg-amber-500 text-black" : "text-neutral-400 hover:text-white"
+                }`}
+              >
+                {p}
+              </button>
+            ))}
+          </div>
+        </div>
         <div style={{ height: 280 }}>
           <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={chartData}>
+            <BarChart data={chartData}>
               <CartesianGrid stroke="#27272a" vertical={false} />
               <XAxis dataKey="date" tick={{ fill: "#71717a", fontSize: 11 }} angle={-45} textAnchor="end" height={60} />
               <YAxis tick={{ fill: "#71717a", fontSize: 11 }} allowDecimals={false} />
@@ -104,12 +125,13 @@ export default function DashboardPage() {
                 labelStyle={{ color: "#fff" }}
                 formatter={(value) => [`KES ${Number(value ?? 0).toLocaleString()}`, "Revenue"]}
               />
-              <Line type="monotone" dataKey="amount" stroke="#f59e0b" strokeWidth={2} dot={{ r: 3, fill: "#f59e0b" }} />
-            </LineChart>
+              <Bar dataKey="amount" fill="#f59e0b" radius={[4, 4, 0, 0]} />
+            </BarChart>
           </ResponsiveContainer>
         </div>
       </div>
 
+      {/* Sessions Section */}
       <div className="bg-neutral-900 rounded-xl p-4 sm:p-5">
         <div className="flex items-center justify-between flex-wrap gap-3 mb-4">
           <h3 className="text-white font-semibold">USSD sessions (dial-ins)</h3>
@@ -117,9 +139,9 @@ export default function DashboardPage() {
             {(["daily", "weekly", "monthly"] as Period[]).map((p) => (
               <button
                 key={p}
-                onClick={() => setPeriod(p)}
+                onClick={() => setSessionsPeriod(p)}
                 className={`px-3 py-1.5 rounded-md text-xs font-medium capitalize transition-colors ${
-                  period === p ? "bg-amber-500 text-black" : "text-neutral-400 hover:text-white"
+                  sessionsPeriod === p ? "bg-amber-500 text-black" : "text-neutral-400 hover:text-white"
                 }`}
               >
                 {p}
