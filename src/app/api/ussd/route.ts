@@ -248,7 +248,9 @@ export async function POST(req: NextRequest) {
       sql`INSERT INTO orders (phone_number, session_id, package_size, quantity, unit_price, total_amount, status) VALUES (${phone}, ${sessionId}, ${product.size}, ${quantity}, ${product.price}, ${totalAmount}, 'pending') RETURNING id`,
       1500
     );
-    const orderId = orderResult.rows.id;
+    //  FIXED (Clean Type Cast)
+    const orderId = (orderResult.rows[0] as { id: number }).id;
+
 
     // Trigger UpesiPay prompt
     const { ok, data } = await initiateStkPush(phone, totalAmount, callbackUrl);
