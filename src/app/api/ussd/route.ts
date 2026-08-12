@@ -241,7 +241,7 @@ export async function POST(req: NextRequest) {
     `;
 
     return respond(
-      `You chose ${product}.\nEnter your M-PESA PIN to see what the box has instore for you.`,
+      `You chose ${product.label}.\nEnter your M-PESA PIN to see what the box has instore for you.`,
       false
     );
   } catch (err) {
