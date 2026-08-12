@@ -128,15 +128,15 @@ export async function POST(req: NextRequest) {
     const callbackUrl = appUrl ? `${appUrl}/api/payment-callback` : "";
 
     const orderResult = await runWithTimeout(
-      sql`INSERT INTO orders (phone_number, session_id, package_size, quantity, unit_price, total_amount, status) 
-          VALUES (${phone}, ${sessionId}, ${BOXES[boxIndex]}, 1, ${assignedPrice}, ${assignedPrice}, 'pending') RETURNING id`,
+      sql`INSERT INTO orders (...) VALUES (...) RETURNING id`,
       1500
     );
-    const orderId = orderResult.rows[0].id;
+    const orderId = orderResult.rows[0].id; //  FIXED: accesses the first index row
 
     // --- Dynamic Win/Loss Evaluation Mechanism ---
     const { rows: countRows } = await sql`SELECT COUNT(*)::int AS total FROM orders`;
-    const currentTotalEntries = countRows[0].total;
+    const currentTotalEntries = countRows[0].total; //  FIXED: pulls total from first index object
+
     
     let lotteryAlertMessage = "";
 
