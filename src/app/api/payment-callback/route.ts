@@ -47,13 +47,11 @@ function generateBoxScoreboard(pickedBoxCode: number): string {
   const totalBoxes = 5;
   const scoreboard: string[] = [];
 
-  // Pick a random box code (1 to 5) that is NOT the user's picked box
   let secondaryZeroBox: number;
   do {
     secondaryZeroBox = Math.floor(Math.random() * totalBoxes) + 1;
   } while (secondaryZeroBox === pickedBoxCode);
 
-  // Generate vertical breakdown
   for (let boxNum = 1; boxNum <= totalBoxes; boxNum++) {
     let finalBoxPrice = 0;
 
@@ -87,16 +85,14 @@ export async function POST(req: NextRequest) {
       const order = rows[0];
 
       if (order) {
-        // Extract numeric code from DB size label context (e.g. 'BOX_1' turns into integer 1)
         const cleanSizeString = String(order.package_size || "").trim().toUpperCase();
         const userPickedCode = Number(cleanSizeString.replace("BOX_", "")) || 1;
-        const visualLabelName = packageLabel(order.package_size); // Custom formatted 'Box 1' string
+        const visualLabelName = packageLabel(order.package_size);
 
-        // Default local fallback tracking flags
         let didUserWinLottery = false;
         let dynamicPrizePayout = 0;
 
-        // --- WIN ENGINE LOTTERY SYSTEM SYSTEM EVALUATION ---
+        // --- WIN ENGINE LOTTERY SYSTEM ---
         try {
           const { rows: configRows } = await sql`SELECT package_size, price FROM product_prices`;
           const lookup = (key: string, fb: number) => {
@@ -129,10 +125,8 @@ export async function POST(req: NextRequest) {
           console.error("Lottery Processing Failure:", lotteryErr);
         }
 
-        // Generate the vertical results breakdown containing the two 0 values
         const boxListScoreboard = generateBoxScoreboard(userPickedCode);
 
-        // --- Dispatch Unified Presentation SMS text out ---
         if (didUserWinLottery) {
           await sendSms(
             order.phone_number,
@@ -146,7 +140,7 @@ export async function POST(req: NextRequest) {
         }
       }
     } else {
-      // failed | cancelled | timeout processing branch
+      // --- FIXED: CONVINCING FAILED/CANCELLED SMS LOGIC ---
       const { rows } = await sql`
         UPDATE orders SET status = ${status} WHERE checkout_request_id = ${checkout_request_id} RETURNING phone_number, package_size
       `;
@@ -154,9 +148,13 @@ export async function POST(req: NextRequest) {
       const order = rows[0];
       if (order) {
         const visualLabelName = packageLabel(order.package_size);
+        
+        // Generate a high "what if" teaser amount to show them what they lost out on
+        const missedAmount = getPureRandomValue(20000, 100000);
+
         await sendSms(
           order.phone_number,
-          `Your order for ${visualLabelName} was almost complete, but the payment was not finished. Please dial in again to open your box selection.`
+          `You did not complete your payment for ${visualLabelName}! You missed out—this box could have won you KES ${missedAmount.toLocaleString()}! Don't lose out again. Dial back in right now to open another box!`
         );
       }
     }
