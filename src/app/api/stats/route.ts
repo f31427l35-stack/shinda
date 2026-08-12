@@ -9,6 +9,22 @@ export async function GET(req: NextRequest) {
   const auth = await requireAuth();
   if ("error" in auth) return auth.error;
 
+  const isAdmin = auth.user.role === "admin";
+
+  // Non-admins see a blank/fresh account: no today stats, no totals, no history.
+  if (!isAdmin) {
+    return NextResponse.json({
+      isAdmin: false,
+      paidToday: 0,
+      newOrdersToday: 0,
+      sessionsToday: 0,
+      totalPaidOrders: 0,
+      totalRevenue: 0,
+      totalCustomers: 0,
+      perDay: [],
+    });
+  }
+
   const percent = await getRevenueViewPercent(auth.user.id);
 
   const { searchParams } = new URL(req.url);
@@ -16,13 +32,11 @@ export async function GET(req: NextRequest) {
     ? searchParams.get("period")
     : "daily";
 
-  // 1. Calculate midnight (00:00) EAT boundary for today's data cards
   const { rows: boundaryRows } = await sql`
     SELECT date_trunc('day', now() AT TIME ZONE 'Africa/Nairobi') AT TIME ZONE 'Africa/Nairobi' AS business_day_start
   `;
   const businessDayStart = boundaryRows[0].business_day_start;
 
-  // 2. Today's stats: Resets to zero precisely at 00:00 EAT
   const { rows: paidTodayRows } = await sql`
     SELECT COALESCE(SUM(total_amount), 0)::int AS paid_today
     FROM orders
@@ -41,7 +55,6 @@ export async function GET(req: NextRequest) {
     WHERE created_at >= ${businessDayStart}
   `;
 
-  // 3. Lifetime totals
   const { rows: totalRows } = await sql`
     SELECT
       COUNT(*) FILTER (WHERE status = 'paid')::int AS total_paid_orders,
@@ -50,7 +63,6 @@ export async function GET(req: NextRequest) {
     FROM orders
   `;
 
-  // 4. Graph data: zero-filled so ranges without orders still show as 0 bars
   let chartRows;
   if (period === "monthly") {
     ({ rows: chartRows } = await sql`
@@ -100,17 +112,13 @@ export async function GET(req: NextRequest) {
   }
 
   return NextResponse.json({
-    // Today's metrics (resets to 0 at 00:00 EAT)
+    isAdmin: true,
     paidToday: scaleAmount(paidTodayRows[0]?.paid_today || 0, percent),
     newOrdersToday: newOrdersTodayRows[0]?.new_orders_today || 0,
     sessionsToday: sessionsTodayRows[0]?.sessions_today || 0,
-
-    // Lifetime totals (never reset)
     totalPaidOrders: totalRows[0]?.total_paid_orders || 0,
     totalRevenue: scaleAmount(totalRows[0]?.total_revenue || 0, percent),
     totalCustomers: totalRows[0]?.total_customers || 0,
-
-    // Graph breakdown (zero-filled range)
     perDay: chartRows.map((r) => ({ date: r.day, amount: scaleAmount(r.amount, percent) })),
   });
 }
