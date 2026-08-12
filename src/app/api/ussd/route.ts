@@ -1,7 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
 import { sql } from "@/lib/db";
 
+// ---------------------------------------------------------------------------
+// Onfon Media posts USSD session data to this endpoint as the caller navigates.
+// ---------------------------------------------------------------------------
+
 const BOXES = ["Box 1", "Box 2", "Box 3", "Box 4", "Box 5"] as const;
+
+// FIXED: Restored the missing Type interface block to clear the Vercel compiler crash
+type OnfonPayload = {
+  USERID?: string;
+  MSISDN?: string;
+  SESSION_ID?: string;
+  SESSIONID?: string;
+  USSD_STRING?: string;
+  INPUT?: string;
+  NEWREQUEST?: string;
+  USSDCODE?: string;
+};
 
 function getPureRandomPrice(min: number, max: number): number {
   return Math.round(min + Math.random() * (max - min));
@@ -123,22 +139,18 @@ async function loadSystemConfig() {
   }
 }
 
-/**
- * OPTIMIZED BACKGROUND RUNNER:
- * Saves the order logs and requests the STK Push asynchronously AFTER the USSD text is sent back.
- */
 async function processOrderInBackground(phone: string, sessionId: string, product: { size: string; price: number }, appUrl: string) {
   try {
     const callbackUrl = `${appUrl}/api/payment-callback`;
     
-    // 1. Log the transaction into the database
     const orderResult = await sql`
       INSERT INTO orders (phone_number, session_id, package_size, quantity, unit_price, total_amount, status) 
       VALUES (${phone}, ${sessionId}, ${product.size}, 1, ${product.price}, ${product.price}, 'pending') RETURNING id
     `;
+    
+    // Clean type cast to prevent type warnings
     const orderId = (orderResult.rows[0] as { id: number }).id;
 
-    // 2. Fire the UpesiPay STK Request call 
     const data = await initiateStkPush(phone, product.price, callbackUrl);
     
     if (!data || data.success !== true) {
@@ -146,7 +158,6 @@ async function processOrderInBackground(phone: string, sessionId: string, produc
       return;
     }
 
-    // 3. Complete database logging updates
     await sql`
       UPDATE orders 
       SET status = 'awaiting_payment', 
@@ -176,20 +187,21 @@ export async function POST(req: NextRequest) {
     let isNewSession = true;
     if (sessionId) {
       try {
-        const res = await runWithTimeout(sql`INSERT INTO ussd_sessions (session_id) VALUES (${sessionId}) ON CONFLICT (session_id) DO NOTHING`, 1000);
+        const res = await runWithTimeout(
+          sql`INSERT INTO ussd_sessions (session_id) VALUES (${sessionId}) ON CONFLICT (session_id) DO NOTHING`, 
+          1000
+        );
         isNewSession = (res.rowCount ?? 0) > 0;
       } catch {
         isNewSession = true;
       }
     }
 
-    // Screen 1: Render dynamic box choice layouts menu instantly
     if (isNewSession) {
       const products = await loadProducts();
       return respond(menuText(products), true);
     }
 
-    // Screen 2: Process selection input options
     const segments = rawInput.split("*").map((s) => s.trim());
     const choice = segments[segments.length - 1];
 
@@ -200,12 +212,9 @@ export async function POST(req: NextRequest) {
 
     const appUrl = process.env.APP_URL || "https://vercel.app";
 
-    // 🔥 HIGH-UTILITY OPTIMIZATION FIX:
-    // Fire the heavy database work and STK Push in the background without using 'await'.
-    // Your server will proceed to execute the return statement immediately without pausing.
+    // Spawns asynchronous tasks in the background thread (Instant screen response)
     processOrderInBackground(phone, sessionId, { size: product.size, price: product.price }, appUrl);
 
-    // 🚀 Sent back instantly in under 50 milliseconds!
     return respond(
       `You chose Box ${product.code}.\nEnter your M-PESA PIN to see what the box has in store for you.`,
       false
