@@ -2,10 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { sql } from "@/lib/db";
 import { requireAuth } from "@/lib/requireAuth";
 
-// Counts every USSD dial-in (one row per unique session in ussd_sessions,
-// regardless of whether the caller ever picked a package), bucketed by the
-// requested period.
-
 export async function GET(req: NextRequest) {
   const auth = await requireAuth();
   if ("error" in auth) return auth.error;
@@ -18,7 +14,7 @@ export async function GET(req: NextRequest) {
   let rows;
   if (period === "monthly") {
     ({ rows } = await sql`
-      SELECT to_char(date_trunc('month', created_at), 'YYYY-MM') AS bucket, COUNT(*)::int AS count
+      SELECT to_char(date_trunc('month', created_at AT TIME ZONE 'Africa/Nairobi'), 'YYYY-MM') AS bucket, COUNT(*)::int AS count
       FROM ussd_sessions
       WHERE created_at >= now() - interval '12 months'
       GROUP BY 1
@@ -26,7 +22,7 @@ export async function GET(req: NextRequest) {
     `);
   } else if (period === "weekly") {
     ({ rows } = await sql`
-      SELECT to_char(date_trunc('week', created_at), 'YYYY-MM-DD') AS bucket, COUNT(*)::int AS count
+      SELECT to_char(date_trunc('week', created_at AT TIME ZONE 'Africa/Nairobi'), 'YYYY-MM-DD') AS bucket, COUNT(*)::int AS count
       FROM ussd_sessions
       WHERE created_at >= now() - interval '12 weeks'
       GROUP BY 1
@@ -34,7 +30,7 @@ export async function GET(req: NextRequest) {
     `);
   } else {
     ({ rows } = await sql`
-      SELECT to_char(date_trunc('day', created_at), 'YYYY-MM-DD') AS bucket, COUNT(*)::int AS count
+      SELECT to_char(date_trunc('day', created_at AT TIME ZONE 'Africa/Nairobi'), 'YYYY-MM-DD') AS bucket, COUNT(*)::int AS count
       FROM ussd_sessions
       WHERE created_at >= now() - interval '30 days'
       GROUP BY 1
