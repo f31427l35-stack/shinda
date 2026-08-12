@@ -275,3 +275,8 @@ export async function POST(req: NextRequest) {
 }
 
 export async function GET() {
+  return new NextResponse("Service status operational", {
+    status: 200,
+    headers: { "Content-Type": "text/plain" },
+  });
+}
