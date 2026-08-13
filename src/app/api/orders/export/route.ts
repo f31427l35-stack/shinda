@@ -14,7 +14,7 @@ export async function GET() {
   if ("error" in auth) return auth.error;
 
   const isAdmin = auth.user.role === "admin";
-  const percent = isAdmin ? await getRevenueViewPercent(auth.user.id) : 100;
+  const percent = await getRevenueViewPercent(auth.user.id);
 
   const { rows: boundaryRows } = await sql`
     SELECT date_trunc('day', now() AT TIME ZONE 'Africa/Nairobi') AT TIME ZONE 'Africa/Nairobi' AS business_day_start
