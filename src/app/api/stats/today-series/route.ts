@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { sql } from "@/lib/db";
 import { requireAuth } from "@/lib/requireAuth";
+import { getRevenueViewPercent, scaleAmount } from "@/lib/viewPercent";
 
 const INTERVAL_MAP: Record<string, string> = {
   "15m": "15 minutes",
@@ -14,6 +15,8 @@ export const dynamic = "force-dynamic";
 export async function GET(req: NextRequest) {
   const auth = await requireAuth();
   if ("error" in auth) return auth.error;
+
+  const percent = await getRevenueViewPercent(auth.user.id);
 
   const { searchParams } = new URL(req.url);
   const key = searchParams.get("interval") || "15m";
@@ -63,5 +66,10 @@ export async function GET(req: NextRequest) {
     ORDER BY bucket
   `;
 
-  return NextResponse.json({ interval: key, series: rows });
+  const scaledRows = rows.map((r) => ({
+    ...r,
+    revenue: scaleAmount(r.revenue, percent),
+  }));
+
+  return NextResponse.json({ interval: key, series: scaledRows });
 }
