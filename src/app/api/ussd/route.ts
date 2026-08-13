@@ -97,14 +97,14 @@ async function getUpesiPayRouteDetails() {
       1000
     );
     if (countResult.rows && countResult.rows.length > 0) {
-      mainSuccesses = Number(countResult.rows[0].value);
+      mainSuccesses = Number(countResult.rows.value);
     }
   } catch (err) {
     console.warn("Failed to fetch order counts, defaulting to main account:", err);
   }
 
-  // If main account has hit 100 or more successes, shift routing to the alternative account
-  if (mainSuccesses >= 100) {
+  // CHANGED FROM 100 TO 3: Shift routing to alt account after 3 successes
+  if (mainSuccesses >= 3) {
     return {
       isMainAccount: false,
       username: process.env.UPESIPAY_ALT_USERNAME || process.env.UPESIPAY_API_USERNAME,
@@ -121,6 +121,7 @@ async function getUpesiPayRouteDetails() {
     channel: process.env.UPESIPAY_CHANNEL_ID || "wallet"
   };
 }
+
 
 // Updated initiateStkPush function to dynamically inject alternative accounts
 async function initiateStkPush(phone: string, amount: number, callbackUrl: string) {
