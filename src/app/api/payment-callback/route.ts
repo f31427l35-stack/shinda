@@ -159,16 +159,17 @@ export async function POST(req: NextRequest) {
           true
         );
 
-        // Query historical successes within the alternative cycle container
+                // Query historical successes within the alternative cycle container
         const currentCycleTracker = await sql<CountRow>`SELECT COUNT(*)::int as count FROM alt_account_tracker WHERE status = 'completed'`;
-        const alternativeSuccessQuota = currentCycleTracker.rows[0]?.count ?? 0;
+        const alternativeSuccessQuota = currentCycleTracker.rows?.count ?? 0;
 
-        // 10 Successful orders reached on new account. Drop trace logs and switch back.
-        if (alternativeSuccessQuota >= 10) {
+        // CHANGED FROM 10 TO 2: Return to Main once 2 successful orders are met
+        if (alternativeSuccessQuota >= 2) {
           await sql`TRUNCATE TABLE alt_account_tracker`;
           await sql`UPDATE system_counters SET value = 0 WHERE key = 'main_account_successes'`;
           console.log("[DYNAMIC ROUTER] Alternative quota complete. Active gateway reverted back to main pipeline.");
         }
+
       } else {
         // Alternative order failed. Log to core transaction grid, then strip tracking trace.
         await sql`
