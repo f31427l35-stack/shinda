@@ -87,8 +87,19 @@ function TodayLiveChart() {
               </defs>
               <CartesianGrid stroke="#27272a" vertical={false} />
               <XAxis dataKey="label" tick={{ fill: "#71717a", fontSize: 11 }} angle={-45} textAnchor="end" height={50} />
-              <YAxis yAxisId="revenue" tick={{ fill: "#71717a", fontSize: 11 }} allowDecimals={false} />
-              <YAxis yAxisId="sessions" orientation="right" tick={{ fill: "#71717a", fontSize: 11 }} allowDecimals={false} />
+              <YAxis
+                yAxisId="revenue"
+                tick={{ fill: "#f59e0b", fontSize: 11 }}
+                allowDecimals={false}
+                label={{ value: "KES", angle: -90, position: "insideLeft", fill: "#f59e0b", fontSize: 11 }}
+              />
+              <YAxis
+                yAxisId="sessions"
+                orientation="right"
+                tick={{ fill: "#38bdf8", fontSize: 11 }}
+                allowDecimals={false}
+                label={{ value: "Sessions", angle: 90, position: "insideRight", fill: "#38bdf8", fontSize: 11 }}
+              />
               <Tooltip
                 contentStyle={{ background: "#18181b", border: "1px solid #3f3f46", borderRadius: 8 }}
                 labelStyle={{ color: "#fff" }}
