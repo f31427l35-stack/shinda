@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import Link from "next/link";
 import {
   LayoutDashboard, ListChecks, Users, Receipt, UserCog, LogOut, ShoppingBag, Menu, X,
@@ -25,7 +25,6 @@ export default function DashboardShell({
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
-  const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
   const [navOpen, setNavOpen] = useState(false);
 
@@ -36,8 +35,11 @@ export default function DashboardShell({
 
   async function handleSignOut() {
     await fetch("/api/auth/logout", { method: "POST" });
-    router.push("/login");
-    router.refresh();
+    // A hard navigation (not router.push) so the whole app remounts fresh
+    // against the server — no leftover client component state, and no
+    // browser back/forward cache serving up this page's last render after
+    // the cookie is already gone.
+    window.location.href = "/login";
   }
 
   const initials = user.name
