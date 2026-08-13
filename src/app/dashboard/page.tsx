@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import {
-  AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine,
 } from "recharts";
 
 type Stats = {
@@ -38,7 +38,7 @@ function formatBucketLabel(bucket: string, period: Period) {
   return new Date(bucket).toLocaleDateString("en-US", { month: "numeric", day: "numeric" });
 }
 
-function TodayLiveChart() {
+function TodayLiveChart({ paidToday }: { paidToday: number }) {
   const [interval, setInterval_] = useState<TodayInterval>("15m");
   const [data, setData] = useState<TodayPoint[]>([]);
   const [loading, setLoading] = useState(true);
@@ -106,6 +106,19 @@ function TodayLiveChart() {
                 formatter={(value, name) =>
                   name === "revenue" ? [`KES ${Number(value ?? 0).toLocaleString()}`, "Revenue"] : [value, "Sessions"]
                 }
+              />
+              <ReferenceLine
+                yAxisId="revenue"
+                y={paidToday}
+                stroke="#f59e0b"
+                strokeDasharray="4 4"
+                strokeOpacity={0.7}
+                label={{
+                  value: `KES ${paidToday.toLocaleString()}`,
+                  position: "left",
+                  fill: "#f59e0b",
+                  fontSize: 11,
+                }}
               />
               <Area
                 yAxisId="revenue"
@@ -200,7 +213,7 @@ export default function DashboardPage() {
 
       {!stats.isAdmin && (
         <div className="mb-4">
-          <TodayLiveChart />
+          <TodayLiveChart paidToday={stats.paidToday} />
         </div>
       )}
 
