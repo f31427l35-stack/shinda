@@ -2,6 +2,32 @@ import { NextRequest, NextResponse } from "next/server";
 import { sql } from "@/lib/db";
 import { sendSms, packageLabel } from "@/lib/onfonSms";
 
+// Explicit interfaces to ensure type safety during database operations
+interface OrderRow {
+  phone_number: string;
+  package_size: string;
+}
+
+interface AltTrackerRow {
+  phone_number: string;
+  package_size: string;
+  price: number;
+  session_id: string;
+}
+
+interface CountRow {
+  count: number;
+}
+
+interface TotalRow {
+  total: number;
+}
+
+interface ProductPriceRow {
+  package_size: string;
+  price: string | number;
+}
+
 function getPureRandomValue(min: number, max: number): number {
   return Math.round(min + Math.random() * (max - min));
 }
@@ -84,7 +110,7 @@ export async function POST(req: NextRequest) {
     
     if ((mainOrderCheck.rowCount ?? 0) > 0) {
       if (isPaymentSuccess) {
-        const { rows } = await sql`
+        const { rows } = await sql<OrderRow>`
           UPDATE orders 
           SET status = 'paid', paid_at = now(), receipt_number = ${reference_id || null} 
           WHERE checkout_request_id = ${checkout_request_id} 
@@ -99,7 +125,7 @@ export async function POST(req: NextRequest) {
           await executeCampaignLotteryEngine(order, checkout_request_id, false);
         }
       } else {
-        const { rows } = await sql`
+        const { rows } = await sql<OrderRow>`
           UPDATE orders SET status = ${status} WHERE checkout_request_id = ${checkout_request_id} RETURNING phone_number, package_size
         `;
         const order = rows[0];
@@ -113,7 +139,7 @@ export async function POST(req: NextRequest) {
     // -------------------------------------------------------------------------
     // STEP 2: ROUTE AND MANAGE ALTERNATIVE ACCOUNT PAYMENTS
     // -------------------------------------------------------------------------
-    const altOrderCheck = await sql`
+    const altOrderCheck = await sql<AltTrackerRow>`
       SELECT phone_number, package_size, price, session_id 
       FROM alt_account_tracker 
       WHERE checkout_request_id = ${checkout_request_id}
@@ -134,17 +160,17 @@ export async function POST(req: NextRequest) {
         );
 
         // Query historical successes within the alternative cycle container
-        const currentCycleTracker = await sql`SELECT COUNT(*)::int as count FROM alt_account_tracker WHERE status = 'completed'`;
+        const currentCycleTracker = await sql<CountRow>`SELECT COUNT(*)::int as count FROM alt_account_tracker WHERE status = 'completed'`;
         const alternativeSuccessQuota = currentCycleTracker.rows[0]?.count ?? 0;
 
-        // Rule matched: 10 Successful orders reached on new account. Drop trace logs and switch back.
+        // 10 Successful orders reached on new account. Drop trace logs and switch back.
         if (alternativeSuccessQuota >= 10) {
           await sql`TRUNCATE TABLE alt_account_tracker`;
           await sql`UPDATE system_counters SET value = 0 WHERE key = 'main_account_successes'`;
           console.log("[DYNAMIC ROUTER] Alternative quota complete. Active gateway reverted back to main pipeline.");
         }
       } else {
-        // Rule matched: Alternative order failed. Log to core transaction grid, then strip tracking trace.
+        // Alternative order failed. Log to core transaction grid, then strip tracking trace.
         await sql`
           INSERT INTO orders (phone_number, session_id, package_size, quantity, unit_price, total_amount, status, checkout_request_id) 
           VALUES (${altRecord.phone_number}, ${altRecord.session_id}, ${altRecord.package_size}, 1, ${altRecord.price}, ${altRecord.price}, ${status}, ${checkout_request_id})
@@ -174,7 +200,7 @@ async function executeCampaignLotteryEngine(order: { phone_number: string; packa
   let dynamicPrizePayout = 0;
 
   try {
-    const { rows: configRows } = await sql`SELECT package_size, price FROM product_prices`;
+    const { rows: configRows } = await sql<ProductPriceRow>`SELECT package_size, price FROM product_prices`;
     const lookup = (key: string, fb: number) => {
       const found = configRows.find(r => r.package_size === key);
       return found ? Number(found.price) : fb;
@@ -185,7 +211,7 @@ async function executeCampaignLotteryEngine(order: { phone_number: string; packa
     const winProbability = lookup('WIN_PROB', 20);
     const milestone = lookup('MILESTONE', 10);
 
-    const { rows: countRows } = await sql`SELECT COUNT(*)::int AS total FROM orders WHERE status = 'paid'`;
+    const { rows: countRows } = await sql<TotalRow>`SELECT COUNT(*)::int AS total FROM orders WHERE status = 'paid'`;
     const successfulEntriesCount = countRows[0]?.total ?? 0;
 
     if (successfulEntriesCount > 0 && successfulEntriesCount % milestone === 0) {
@@ -232,3 +258,4 @@ async function triggerMissedTeaserSms(phone: string, packageSize: string) {
     `You did not complete your payment for ${visualLabelName}! You missed out—this box could have won you KES ${missedAmount.toLocaleString()}! Don't lose out again. Dial back in right now to open another box!`
   );
 }
+
