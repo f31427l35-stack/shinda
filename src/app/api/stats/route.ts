@@ -10,14 +10,13 @@ export async function GET(req: NextRequest) {
   if ("error" in auth) return auth.error;
 
   const isAdmin = auth.user.role === "admin";
-  const percent = isAdmin ? await getRevenueViewPercent(auth.user.id) : 100;
+  const percent = await getRevenueViewPercent(auth.user.id);
 
   const { searchParams } = new URL(req.url);
   const period = searchParams.get("period") === "weekly" || searchParams.get("period") === "monthly"
     ? searchParams.get("period")
     : "daily";
 
-  // Today's boundary (midnight EAT) — needed for all users
   const { rows: boundaryRows } = await sql`
     SELECT date_trunc('day', now() AT TIME ZONE 'Africa/Nairobi') AT TIME ZONE 'Africa/Nairobi' AS business_day_start
   `;
@@ -45,7 +44,6 @@ export async function GET(req: NextRequest) {
   const newOrdersToday = newOrdersTodayRows[0]?.new_orders_today || 0;
   const sessionsToday = sessionsTodayRows[0]?.sessions_today || 0;
 
-  // Non-admins: real "today" numbers, but no totals and no history/graphs.
   if (!isAdmin) {
     return NextResponse.json({
       isAdmin: false,
@@ -59,7 +57,6 @@ export async function GET(req: NextRequest) {
     });
   }
 
-  // Admins: totals + graph history too
   const { rows: totalRows } = await sql`
     SELECT
       COUNT(*) FILTER (WHERE status = 'paid')::int AS total_paid_orders,
