@@ -8,7 +8,7 @@ export async function GET(req: NextRequest) {
   if ("error" in auth) return auth.error;
 
   const isAdmin = auth.user.role === "admin";
-  const percent = isAdmin ? await getRevenueViewPercent(auth.user.id) : 100;
+  const percent = await getRevenueViewPercent(auth.user.id);
 
   const { searchParams } = new URL(req.url);
   const search = searchParams.get("search") || "";
