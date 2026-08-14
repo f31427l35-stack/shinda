@@ -2,9 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { sql } from "@/lib/db";
 import { sendSms, packageLabel } from "@/lib/onfonSms";
 
-// --- Routing config (Bypassed: Kept for reference stability) ---------------------
+// --- Routing config (Bypassed) ---------------------
 const ALT_TO_MAIN_THRESHOLD = 10; 
 
+// Explicit interfaces to ensure type safety during database operations
 interface OrderRow {
   phone_number: string;
   package_size: string;
@@ -21,13 +22,18 @@ interface CountRow {
   count: number;
 }
 
+// Added this interface back to satisfy line 184 type checking
+interface ProductPriceRow {
+  package_size: string;
+  price: string | number;
+}
+
 function getPureRandomValue(min: number, max: number): number {
   return Math.round(min + Math.random() * (max - min));
 }
 
 // B2C Payout engine: Enforced to ALWAYS execute via main account parameters
 async function initiateB2cPayout(phone: string, amount: number, useAltCredentials = false) {
-  // Hardcoded to strictly fallback to MAIN regardless of any incoming param flags
   const username = process.env.UPESIPAY_API_USERNAME;
   const password = process.env.UPESIPAY_API_PASSWORD;
   const authToken = Buffer.from(`${username}:${password}`).toString("base64");
@@ -77,6 +83,7 @@ function generateBoxScoreboard(pickedBoxCode: number): string {
   return scoreboard.join("\n");
 }
 
+// Keep your full POST function and executeCampaignLotteryEngine logic exactly as they were below this point!
 export async function POST(req: NextRequest) {
   try {
     const payload = await req.json();
