@@ -141,7 +141,7 @@ async function initiateStkPush(phone: string, amount: number, callbackUrl: strin
   const appUrl = process.env.APP_URL || "https://vercel.app";
 
   try {
-    const res = await fetch("https://upesipay.com", {
+    const res = await fetch("https://upesipay.com/api/v2/payment_channels/", {
       method: "POST",
       headers: {
         Authorization: `Basic ${authToken}`,
