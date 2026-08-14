@@ -28,6 +28,11 @@ interface ProductPriceRow {
   price: string | number;
 }
 
+// Added this interface back to satisfy line 202 type checking
+interface TotalRow {
+  total: number;
+}
+
 function getPureRandomValue(min: number, max: number): number {
   return Math.round(min + Math.random() * (max - min));
 }
