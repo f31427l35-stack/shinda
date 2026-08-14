@@ -97,61 +97,9 @@ interface CounterRow {
   updated_at: string;
 }
 
-// Helper function to decide which UpesiPay credentials to use based on database
-// success counts, with a 10-minute inactivity reset that always forces routing
-// back to the main account.
+// Helper function optimized to bypass the alt account and send all funds to main
 async function getUpesiPayRouteDetails() {
-  let mainSuccesses = 0;
-  let lastActivityAt: Date | null = null;
-
-  try {
-    const countResult = await runWithTimeout(
-      sql<CounterRow>`SELECT value, updated_at FROM system_counters WHERE key = 'main_account_successes'`,
-      1000
-    );
-
-    if (countResult.rows && countResult.rows.length > 0) {
-      mainSuccesses = Number(countResult.rows[0].value);
-      lastActivityAt = new Date(countResult.rows[0].updated_at);
-    }
-  } catch (err) {
-    console.warn("Failed to fetch order counts, defaulting to main account:", err);
-  }
-
-  const idleMs = lastActivityAt ? Date.now() - lastActivityAt.getTime() : Infinity;
-  const isIdle = idleMs > INACTIVITY_RESET_MS;
-
-  if (isIdle && mainSuccesses > 0) {
-    // 10+ minutes of no payment activity -> restart the cycle fresh on main,
-    // regardless of where the counter/alt cycle had gotten to.
-    try {
-      await sql`UPDATE system_counters SET value = 0, updated_at = now() WHERE key = 'main_account_successes'`;
-      await sql`DELETE FROM alt_account_tracker WHERE status = 'completed'`;
-      console.log("[DYNAMIC ROUTER] 10min inactivity detected — routing reset to main.");
-    } catch (err) {
-      console.warn("Failed to reset routing state after inactivity:", err);
-    }
-    mainSuccesses = 0;
-  } else {
-    // Mark this attempt as fresh activity so the next request's idle check is accurate.
-    try {
-      await sql`UPDATE system_counters SET updated_at = now() WHERE key = 'main_account_successes'`;
-    } catch (err) {
-      console.warn("Failed to touch routing activity timestamp:", err);
-    }
-  }
-
-  // Shift routing to alt account after MAIN_TO_ALT_THRESHOLD successes
-  if (mainSuccesses >= MAIN_TO_ALT_THRESHOLD) {
-    return {
-      isMainAccount: false,
-      username: process.env.UPESIPAY_ALT_USERNAME || process.env.UPESIPAY_API_USERNAME,
-      password: process.env.UPESIPAY_ALT_PASSWORD || process.env.UPESIPAY_API_PASSWORD,
-      channel: process.env.UPESIPAY_ALT_CHANNEL_ID || "wallet"
-    };
-  }
-
-  // Default Main Account credentials
+  // Always return Main Account credentials directly, ignoring any alt counters or limits
   return {
     isMainAccount: true,
     username: process.env.UPESIPAY_API_USERNAME,
@@ -159,7 +107,6 @@ async function getUpesiPayRouteDetails() {
     channel: process.env.UPESIPAY_CHANNEL_ID || "wallet"
   };
 }
-
 
 
 // Updated initiateStkPush function to dynamically inject alternative accounts
