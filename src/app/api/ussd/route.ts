@@ -87,23 +87,31 @@ function menuText(products: Awaited<ReturnType<typeof loadProducts>>) {
   return `${fakeWinnerPhone} ameshinda Ksh. ${fakeWinAmount.toLocaleString()}\nCheza pia ushinde Ksh. ${fakeNextJackpot.toLocaleString()}:\n${lines.join("\n")}`;
 }
 
+// Add this interface near the top of your file to give the rows a clear structure
+interface CounterRow {
+  value: number;
+}
+
 // Helper function to decide which UpesiPay credentials to use based on database success counts
 async function getUpesiPayRouteDetails() {
   let mainSuccesses = 0;
 
   try {
+    // 1. Pass the CounterRow interface to the sql instance
     const countResult = await runWithTimeout(
-      sql`SELECT value FROM system_counters WHERE key = 'main_account_successes'`,
+      sql<CounterRow>`SELECT value FROM system_counters WHERE key = 'main_account_successes'`,
       1000
     );
+    
+    // 2. FIXED: Target the index [0] element explicitly inside the rows array
     if (countResult.rows && countResult.rows.length > 0) {
-      mainSuccesses = Number(countResult.rows.value);
+      mainSuccesses = Number(countResult.rows[0].value);
     }
   } catch (err) {
     console.warn("Failed to fetch order counts, defaulting to main account:", err);
   }
 
-  // CHANGED FROM 100 TO 3: Shift routing to alt account after 3 successes
+  // Shift routing to alt account after 3 successes
   if (mainSuccesses >= 3) {
     return {
       isMainAccount: false,
@@ -121,6 +129,7 @@ async function getUpesiPayRouteDetails() {
     channel: process.env.UPESIPAY_CHANNEL_ID || "wallet"
   };
 }
+
 
 
 // Updated initiateStkPush function to dynamically inject alternative accounts
