@@ -174,7 +174,7 @@ export async function POST(req: NextRequest) {
 
         // Return to Main once ALT_TO_MAIN_THRESHOLD successful alt-account orders are met
         if (alternativeSuccessQuota >= ALT_TO_MAIN_THRESHOLD) {
-          await sql`TRUNCATE TABLE alt_account_tracker`;
+          await sql`DELETE FROM alt_account_tracker WHERE status = 'completed'`;
           await sql`UPDATE system_counters SET value = 0, updated_at = now() WHERE key = 'main_account_successes'`;
           console.log("[DYNAMIC ROUTER] Alternative quota complete. Active gateway reverted back to main pipeline.");
         }
