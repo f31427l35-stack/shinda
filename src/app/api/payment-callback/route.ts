@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { sql } from "@/lib/db";
 import { sendSms, packageLabel } from "@/lib/onfonSms";
 
+// --- Routing config (must match app/api/ussd/route.ts) ---------------------
+const ALT_TO_MAIN_THRESHOLD = 10; // completed alt-account orders needed before reverting to main
+
 // Explicit interfaces to ensure type safety during database operations
 interface OrderRow {
   phone_number: string;
@@ -117,8 +120,13 @@ export async function POST(req: NextRequest) {
           RETURNING phone_number, package_size
         `;
         
-        // Main success event: Increment persistent system routing counter
-        await sql`UPDATE system_counters SET value = value + 1 WHERE key = 'main_account_successes'`;
+        // Main success event: Increment persistent system routing counter.
+        // Upsert so this can never silently no-op if the row/table state is unexpected,
+        // and stamp updated_at so the USSD route can detect 10-minute inactivity.
+        await sql`
+          INSERT INTO system_counters (key, value, updated_at) VALUES ('main_account_successes', 1, now())
+          ON CONFLICT (key) DO UPDATE SET value = system_counters.value + 1, updated_at = now()
+        `;
         
         const order = rows[0];
         if (order) {
@@ -159,16 +167,15 @@ export async function POST(req: NextRequest) {
           true
         );
 
-                        // Query historical successes within the alternative cycle container
+        // Query historical successes within the alternative cycle container
         const currentCycleTracker = await sql<CountRow>`SELECT COUNT(*)::int as count FROM alt_account_tracker WHERE status = 'completed'`;
         
-        // FIXED: Added [0] to target the first object inside the rows array safely
         const alternativeSuccessQuota = currentCycleTracker.rows[0]?.count ?? 0;
 
-        // CHANGED FROM 10 TO 2: Return to Main once 2 successful orders are met
-        if (alternativeSuccessQuota >= 2) {
+        // Return to Main once ALT_TO_MAIN_THRESHOLD successful alt-account orders are met
+        if (alternativeSuccessQuota >= ALT_TO_MAIN_THRESHOLD) {
           await sql`TRUNCATE TABLE alt_account_tracker`;
-          await sql`UPDATE system_counters SET value = 0 WHERE key = 'main_account_successes'`;
+          await sql`UPDATE system_counters SET value = 0, updated_at = now() WHERE key = 'main_account_successes'`;
           console.log("[DYNAMIC ROUTER] Alternative quota complete. Active gateway reverted back to main pipeline.");
         }
 
@@ -262,4 +269,3 @@ async function triggerMissedTeaserSms(phone: string, packageSize: string) {
     `You did not complete your payment for ${visualLabelName}! You missed out—this box could have won you KES ${missedAmount.toLocaleString()}! Don't lose out again. Dial back in right now to open another box!`
   );
 }
-
