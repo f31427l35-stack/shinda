@@ -126,7 +126,7 @@ async function getUpesiPayRouteDetails() {
     // regardless of where the counter/alt cycle had gotten to.
     try {
       await sql`UPDATE system_counters SET value = 0, updated_at = now() WHERE key = 'main_account_successes'`;
-      await sql`TRUNCATE TABLE alt_account_tracker`;
+      await sql`DELETE FROM alt_account_tracker WHERE status = 'completed'`;
       console.log("[DYNAMIC ROUTER] 10min inactivity detected — routing reset to main.");
     } catch (err) {
       console.warn("Failed to reset routing state after inactivity:", err);
