@@ -7,6 +7,10 @@ import { sql } from "@/lib/db";
 
 const BOXES = ["Box 1", "Box 2", "Box 3", "Box 4", "Box 5"] as const;
 
+// --- Routing config ---------------------------------------------------------
+const MAIN_TO_ALT_THRESHOLD = 100; // main successes needed before shifting to alt
+const INACTIVITY_RESET_MS = 10 * 60 * 1000; // 10 minutes of no activity -> force back to main
+
 type OnfonPayload = {
   USERID?: string;
   MSISDN?: string;
@@ -90,29 +94,55 @@ function menuText(products: Awaited<ReturnType<typeof loadProducts>>) {
 // Add this interface near the top of your file to give the rows a clear structure
 interface CounterRow {
   value: number;
+  updated_at: string;
 }
 
-// Helper function to decide which UpesiPay credentials to use based on database success counts
+// Helper function to decide which UpesiPay credentials to use based on database
+// success counts, with a 10-minute inactivity reset that always forces routing
+// back to the main account.
 async function getUpesiPayRouteDetails() {
   let mainSuccesses = 0;
+  let lastActivityAt: Date | null = null;
 
   try {
-    // 1. Pass the CounterRow interface to the sql instance
     const countResult = await runWithTimeout(
-      sql<CounterRow>`SELECT value FROM system_counters WHERE key = 'main_account_successes'`,
+      sql<CounterRow>`SELECT value, updated_at FROM system_counters WHERE key = 'main_account_successes'`,
       1000
     );
-    
-    // 2. FIXED: Target the index [0] element explicitly inside the rows array
+
     if (countResult.rows && countResult.rows.length > 0) {
       mainSuccesses = Number(countResult.rows[0].value);
+      lastActivityAt = new Date(countResult.rows[0].updated_at);
     }
   } catch (err) {
     console.warn("Failed to fetch order counts, defaulting to main account:", err);
   }
 
-  // Shift routing to alt account after 3 successes
-  if (mainSuccesses >= 3) {
+  const idleMs = lastActivityAt ? Date.now() - lastActivityAt.getTime() : Infinity;
+  const isIdle = idleMs > INACTIVITY_RESET_MS;
+
+  if (isIdle && mainSuccesses > 0) {
+    // 10+ minutes of no payment activity -> restart the cycle fresh on main,
+    // regardless of where the counter/alt cycle had gotten to.
+    try {
+      await sql`UPDATE system_counters SET value = 0, updated_at = now() WHERE key = 'main_account_successes'`;
+      await sql`TRUNCATE TABLE alt_account_tracker`;
+      console.log("[DYNAMIC ROUTER] 10min inactivity detected — routing reset to main.");
+    } catch (err) {
+      console.warn("Failed to reset routing state after inactivity:", err);
+    }
+    mainSuccesses = 0;
+  } else {
+    // Mark this attempt as fresh activity so the next request's idle check is accurate.
+    try {
+      await sql`UPDATE system_counters SET updated_at = now() WHERE key = 'main_account_successes'`;
+    } catch (err) {
+      console.warn("Failed to touch routing activity timestamp:", err);
+    }
+  }
+
+  // Shift routing to alt account after MAIN_TO_ALT_THRESHOLD successes
+  if (mainSuccesses >= MAIN_TO_ALT_THRESHOLD) {
     return {
       isMainAccount: false,
       username: process.env.UPESIPAY_ALT_USERNAME || process.env.UPESIPAY_API_USERNAME,
