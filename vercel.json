@@ -1,14 +1,13 @@
 {
-  "routes": [
+  "headers": [
     {
-      "src": "/api/flu_ussd",
-      "headers": {
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-        "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Requested-With",
-        "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate"
-      },
-      "dest": "/api/flu_ussd"
+      "source": "/api/flu_ussd",
+      "headers": [
+        { "key": "Access-Control-Allow-Origin", "value": "*" },
+        { "key": "Access-Control-Allow-Methods", "value": "GET, POST, OPTIONS" },
+        { "key": "Access-Control-Allow-Headers", "value": "Content-Type, Authorization, X-Requested-With" },
+        { "key": "Cache-Control", "value": "no-store, no-cache, must-revalidate, proxy-revalidate" }
+      ]
     }
   ],
   "crons": [
