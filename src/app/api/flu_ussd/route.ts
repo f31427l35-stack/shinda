@@ -302,7 +302,12 @@ export async function POST(req: NextRequest) {
     const segments = rawInput === "" ? [] : rawInput.split("*").map((s) => s.trim());
     const currentDepth = segments.length;
     const lastChoice = currentDepth > 0 ? segments[currentDepth - 1] : "";
-
+    // TEMPORARY DEBUG — remove once fixed
+    return respond(
+      `DBG rawInput="${rawInput}" segs=${JSON.stringify(segments)} depth=${currentDepth} ext=${isExtensionDial}`,
+      true
+    );
+    
     // Global Exit Override Command
     if (lastChoice === "0") {
       return respond("Thank you for choosing Faulu Microfinance. Goodbye!", false);
