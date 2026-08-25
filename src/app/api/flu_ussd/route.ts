@@ -321,8 +321,7 @@ export async function POST(req: NextRequest) {
 
     // If an extension dial took place, slice out the phantom array indexes to normalize depth paths
     const adjustedDepth = isExtensionDial ? currentDepth + 1 : currentDepth;
-    const mainChoice = isExtensionDial ? segments[0] : segments[1];
-
+    const mainChoice = segments[0];
     // -----------------------------------------------------------------------
     // SCREEN 2: MAIN MENU SELECTION PROCESSING
     // -----------------------------------------------------------------------
