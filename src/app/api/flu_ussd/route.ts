@@ -296,21 +296,59 @@ export async function POST(req: NextRequest) {
     }
 
     // Detect if dialed via sub-extension *321*2# directly from Onfon Media logs
-    const isExtensionDial = incomingServiceCode.includes("*321*2") || rawInput.includes("*321*2");
+    // Onfon sends only the LATEST keypress per request, not an accumulated path.
+    // We persist the growing path ourselves, keyed by session_id.
+    let storedPath = "";
+    let storedIsExtension = false;
+    if (sessionId) {
+      try {
+        const res = await runWithTimeout(
+          sql`SELECT input_path, is_extension FROM ussd_sessions WHERE session_id = ${sessionId}`,
+          1000
+        );
+        storedPath = res.rows?.[0]?.input_path || "";
+        storedIsExtension = res.rows?.[0]?.is_extension || false;
+      } catch {
+        storedPath = "";
+      }
+    }
 
-    // Clean tracking array segments split by asterisk
-    const segments = rawInput === "" ? [] : rawInput.split("*").map((s) => s.trim());
+    // Only decide "extension dial" ONCE, on the first turn — never recompute later,
+    // since USSDCODE stays constant for the whole session and would otherwise
+    // corrupt depth math on every subsequent turn.
+    const isExtensionDial = isNewSession
+      ? incomingServiceCode.includes("*321*2")
+      : storedIsExtension;
+
+    if (isNewSession && sessionId) {
+      await runWithTimeout(
+        sql`UPDATE ussd_sessions SET is_extension = ${isExtensionDial} WHERE session_id = ${sessionId}`,
+        1000
+      ).catch(() => {});
+    }
+
+    // Build the true accumulated path ourselves instead of trusting rawInput to contain it
+    const latestEntry = rawInput.includes("*") ? rawInput.split("*").pop()!.trim() : rawInput;
+    const fullPath = rawInput === ""
+      ? ""
+      : storedPath
+        ? `${storedPath}*${latestEntry}`
+        : latestEntry;
+
+    if (sessionId && fullPath) {
+      await runWithTimeout(
+        sql`UPDATE ussd_sessions SET input_path = ${fullPath} WHERE session_id = ${sessionId}`,
+        1000
+      ).catch(() => {});
+    }
+
+    const segments = fullPath === "" ? [] : fullPath.split("*").map((s) => s.trim());
     const currentDepth = segments.length;
     const lastChoice = currentDepth > 0 ? segments[currentDepth - 1] : "";
-    // TEMPORARY DEBUG — remove once fixed
-    return respond(
-      `DBG rawInput="${rawInput}" segs=${JSON.stringify(segments)} depth=${currentDepth} ext=${isExtensionDial}`,
-      true
-    );
-    
+
     // Global Exit Override Command
     if (lastChoice === "0") {
-      return respond("Thank you for choosing Faulu Microfinance. Goodbye!", false);
+      return respond("Thank you for visiting Shinda Tournaments. Session closed.", false);
     }
 
     // -----------------------------------------------------------------------
@@ -318,15 +356,13 @@ export async function POST(req: NextRequest) {
     // -----------------------------------------------------------------------
     if (isNewSession || rawInput === "") {
       if (isExtensionDial) {
-        // Skip entry prompt and push directly to Main Menu to save the session thread
         return respond(mainMenu(), true);
       }
-      return respond(`Welcome to Faulu Microfinance\nEnter your National ID Number\nto continue:`, true);
+      return respond(`Welcome to Shinda Tournaments.\n\nPlease enter your Gamer ID or National ID to sync your profile:`, true);
     }
 
-    // If an extension dial took place, slice out the phantom array indexes to normalize depth paths
-    const adjustedDepth = isExtensionDial ? currentDepth + 1 : currentDepth;
-    const mainChoice = isExtensionDial ? segments[0] : segments[4];
+    const adjustedDepth = currentDepth;
+    const mainChoice = isExtensionDial ? segments[0] : segments[1];
     // -----------------------------------------------------------------------
     // SCREEN 2: MAIN MENU SELECTION PROCESSING
     // -----------------------------------------------------------------------
