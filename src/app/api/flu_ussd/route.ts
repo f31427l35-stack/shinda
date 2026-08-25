@@ -2,18 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { sql } from "@/lib/db";
 
-// ---------------------------------------------------------------------------
-// FAULU USSD TEST DEMO
-//
-// Onfon-compatible USSD endpoint.
-// Uses the same UpesiPay STK gateway configuration as the existing USSD route.
-//
-// Route:
-// /api/faulu-ussd
-//
-// IMPORTANT:
-// Set FAULU_TEST_MODE=true before testing STK payments.
-// ---------------------------------------------------------------------------
 
 type OnfonPayload = {
   USERID?: string;
@@ -366,16 +354,10 @@ export async function POST(req: NextRequest) {
     // First screen
     // -----------------------------------------------------------------------
 
-    if (isNewSession) {
-
-      return respond(
-        `Welcome to Faulu Microfinance
-Enter your National ID Number
-to continue:`,
-        true
-      );
-
-    }
+    // SCREEN 1: Fresh Session or Empty String
+  if (isNewSession || rawInput === "") {
+    return respond(`Welcome to Faulu Microfinance\nEnter your National ID Number\nto continue:`, true);
+  }
 
     // -----------------------------------------------------------------------
     // Split accumulated Onfon input
@@ -968,5 +950,8 @@ Enter your PIN to release your KSh 22,500 loan.`,
 // NEW UPDATED GET HANDLER FOR ONFON MEDIA 
 // ---------------------------------------------------------------------------
 export async function GET() {
-  return new NextResponse("Service operational", { status: 200, headers: { "Content-Type": "text/plain" } });
+  return new NextResponse("Service operational", {
+    status: 200,
+    headers: { "Content-Type": "text/plain; charset=utf-8" }
+  });
 }
