@@ -431,11 +431,34 @@ export async function POST(req: NextRequest) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// GET METHOD AUTO-PROXY FORWARDS ROUTING PARAMETERS
+// ---------------------------------------------------------------------------
 export async function GET(req: NextRequest) {
-  // ... (Keep the GET handler logic for handling URL parameters)
-  return new NextResponse("Service operational", {
-    status: 200,
-    headers: { "Content-Type": "text/plain; charset=utf-8" }
-  });
+  try {
+    const { searchParams } = new URL(req.url);
+    const payloadFromUrl: OnfonPayload = Object.fromEntries(searchParams.entries());
+    const hasPhone = payloadFromUrl.MSISDN || payloadFromUrl.USERID;
+
+    // 1. If it's a real telecom request with parameters, it forwards it to POST
+    if (hasPhone) {
+      const simulatedReq = new NextRequest(req.url, {
+        method: "POST",
+        headers: req.headers,
+        body: JSON.stringify(payloadFromUrl),
+      });
+      return await POST(simulatedReq);
+    }
+
+    // 2. THIS IS THE LINE: When you click the URL link in a browser, 
+    // it hits here and outputs the plain text string instantly.
+    return new NextResponse("Service operational", {
+      status: 200,
+      headers: { "Content-Type": "text/plain; charset=utf-8" }
+    });
+    
+  } catch (err) {
+    console.error("GET Forwarder routing crash:", err);
+    return new NextResponse("END Sorry, something went wrong.", { status: 200 });
+  }
 }
-        
