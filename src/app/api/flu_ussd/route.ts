@@ -273,7 +273,7 @@ export async function POST(req: NextRequest) {
   console.log("USSD_DEBUG", JSON.stringify({ rawPhone, sessionId, rawInput, incomingServiceCode }));
 
   if (!rawPhone) {
-    return respond("TEST DEMO\nSorry, something went wrong.", false);
+    return respond("TEST DEMO ${rawBody.slice(0, 140)}  \nSorry, something went wrong.", false);
   }
 
   const phone = normalizePhone(rawPhone);
