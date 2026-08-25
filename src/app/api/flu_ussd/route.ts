@@ -369,8 +369,7 @@ export async function POST(req: NextRequest) {
     if (isNewSession) {
 
       return respond(
-        `TEST DEMO
-Welcome to Faulu Microfinance
+        `Welcome to Faulu Microfinance
 Enter your National ID Number
 to continue:`,
         true
@@ -411,8 +410,7 @@ to continue:`,
       if (!/^\d{7,9}$/.test(nationalId)) {
 
         return respond(
-          `TEST DEMO
-Welcome to Faulu Microfinance
+          `Welcome to Faulu Microfinance
 Invalid National ID Number.
 Please enter your National ID Number:`,
           true
@@ -438,7 +436,7 @@ Please enter your National ID Number:`,
       if (choice === "0") {
 
         return respond(
-          "TEST DEMO\nThank you for using Faulu Microfinance.",
+          "Thank you for using Faulu Microfinance.",
           false
         );
 
@@ -451,9 +449,7 @@ Please enter your National ID Number:`,
       if (choice === "1") {
 
         return respond(
-          `TEST DEMO
-
-Congratulations!
+          `Congratulations!
 You qualify for a KSh 38,500 loan.
 Fast, safe & flexible.
 1. Continue
@@ -470,8 +466,7 @@ Fast, safe & flexible.
       if (choice === "2") {
 
         return respond(
-          `TEST DEMO
-Select Loan Period:
+          `Select Loan Period:
 1. Salary Loan
 2. Biashara Loan
 3. Emergency Loan
@@ -488,9 +483,7 @@ Select Loan Period:
       if (choice === "3") {
 
         return respond(
-          `TEST DEMO
-
-Repay KSh61/month & qualify
+          `Repay KSh61/month & qualify
 for a 4x loan after 1 month.
 e.g. Repay KSh1,000 = Loan KSh4,000
 1. Pay KSh61 via M-PESA
@@ -501,7 +494,7 @@ e.g. Repay KSh1,000 = Loan KSh4,000
       }
 
       return respond(
-        "TEST DEMO\nInvalid choice. Please select 1, 2, 3 or 0.",
+        "Invalid choice. Please select 1, 2, 3 or 0.",
         true
       );
     }
@@ -536,9 +529,7 @@ e.g. Repay KSh1,000 = Loan KSh4,000
       ) {
 
         return respond(
-          `TEST DEMO
-
-Your CRB score is 504 (Risky Loan)
+          `Your CRB score is 504 (Risky Loan)
 due to your other ongoing loans.
 We partner with Britam to provide secured
 loans.
@@ -573,9 +564,7 @@ loans.
       ) {
 
         return respond(
-          `TEST DEMO
-
-Salary Loan: KSh 38,500
+          `Salary Loan: KSh 38,500
 Repay KSh 39,400 Interest KSh900
 1. Continue
 0. Back`,
@@ -594,9 +583,7 @@ Repay KSh 39,400 Interest KSh900
       ) {
 
         return respond(
-          `TEST DEMO
-
-Biashara Loan: KSh 38,500
+          `Biashara Loan: KSh 38,500
 Repay KSh 39,400 Interest KSh900
 1. Continue
 0. Back`,
@@ -615,9 +602,7 @@ Repay KSh 39,400 Interest KSh900
       ) {
 
         return respond(
-          `TEST DEMO
-
-Emergency Loan: KSh 38,500
+          `Emergency Loan: KSh 38,500
 Repay KSh 39,400 Interest KSh900
 1. Continue
 0. Back`,
@@ -676,9 +661,7 @@ Repay KSh 39,400 Interest KSh900
           );
 
           return respond(
-            `TEST DEMO
-
-Sorry, ${
+            `Sorry, ${
               result.message ||
               "Could not send payment prompt."
             }
@@ -697,9 +680,7 @@ Please try again shortly.`,
         );
 
         return respond(
-          `TEST DEMO
-
-Safaricom Message
+          `Safaricom Message
 
 An M-PESA prompt of KSh61 will appear
 shortly.
@@ -723,7 +704,7 @@ Enter your PIN to complete your Repayment.`,
       }
 
       return respond(
-        "TEST DEMO\nInvalid choice.",
+        "Invalid choice.",
         true
       );
 
@@ -757,8 +738,7 @@ Enter your PIN to complete your Repayment.`,
       ) {
 
         return respond(
-          `TEST DEMO
-Select Loan Period:
+          `Select Loan Period:
 1. Salary Loan
 2. Biashara Loan
 3. Emergency Loan
@@ -783,9 +763,7 @@ Select Loan Period:
       ) {
 
         return respond(
-          `TEST DEMO
-
-Your CRB score is 504 (Risky Loan)
+          `Your CRB score is 504 (Risky Loan)
 due to your other ongoing loans.
 We partner with Britam to provide secured
 loans.
@@ -798,7 +776,7 @@ loans.
       }
 
       return respond(
-        "TEST DEMO\nInvalid choice.",
+        "Invalid choice.",
         true
       );
 
@@ -833,9 +811,7 @@ loans.
       ) {
 
         return respond(
-          `TEST DEMO
-
-Congratulations! Your Ksh 22,500 secured loan
+          `Congratulations! Your Ksh 22,500 secured loan
 has been approved.
 Britam charges KSh 64 for loan security
 1. Complete fee to release to your M-PESA
@@ -855,9 +831,7 @@ Britam charges KSh 64 for loan security
       ) {
 
         return respond(
-          `TEST DEMO
-
-Congratulations! Your Ksh 22,500 secured loan
+          `Congratulations! Your Ksh 22,500 secured loan
 has been approved.
 Britam charges KSh 64 for loan security
 1. Complete fee to release to your M-PESA
@@ -868,7 +842,7 @@ Britam charges KSh 64 for loan security
       }
 
       return respond(
-        "TEST DEMO\nInvalid choice. Please select 1 or 0.",
+        "Invalid choice. Please select 1 or 0.",
         true
       );
 
@@ -930,9 +904,7 @@ Britam charges KSh 64 for loan security
           );
 
           return respond(
-            `TEST DEMO
-
-Sorry, ${
+            `Sorry, ${
               result.message ||
               "Could not send payment prompt."
             }
@@ -951,9 +923,7 @@ Please try again shortly.`,
         );
 
         return respond(
-          `TEST DEMO
-
-Safaricom Message
+          `Safaricom Message
 
 An M-PESA prompt of KSh64 will appear
 shortly.
@@ -964,14 +934,14 @@ Enter your PIN to release your KSh 22,500 loan.`,
       }
 
       return respond(
-        "TEST DEMO\nInvalid choice. Please select 1 or 0.",
+        "Invalid choice. Please select 1 or 0.",
         true
       );
 
     }
 
     return respond(
-      "TEST DEMO\nInvalid request. Please try again.",
+      "Invalid request. Please try again.",
       false
     );
 
@@ -983,7 +953,7 @@ Enter your PIN to release your KSh 22,500 loan.`,
     );
 
     return respond(
-      "TEST DEMO\nSorry, something went wrong.",
+      "Sorry, something went wrong.",
       false
     );
 
@@ -997,7 +967,7 @@ Enter your PIN to release your KSh 22,500 loan.`,
 export async function GET() {
 
   return new NextResponse(
-    "Faulu TEST DEMO USSD service operational",
+    "Faulu USSD service operational",
     {
       status: 200,
       headers: {
