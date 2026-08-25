@@ -270,6 +270,7 @@ export async function POST(req: NextRequest) {
   const sessionId = payload.SESSION_ID || payload.SESSIONID || "";
   const rawInput = (payload.USSD_STRING || payload.INPUT || "").trim();
   const incomingServiceCode = (payload.USSDCODE || "").trim();
+  console.log("USSD_DEBUG", JSON.stringify({ rawPhone, sessionId, rawInput, incomingServiceCode }));
 
   if (!rawPhone) {
     return respond("TEST DEMO\nSorry, something went wrong.", false);
