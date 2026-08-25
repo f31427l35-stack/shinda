@@ -967,35 +967,6 @@ Enter your PIN to release your KSh 22,500 loan.`,
 // ---------------------------------------------------------------------------
 // NEW UPDATED GET HANDLER FOR ONFON MEDIA 
 // ---------------------------------------------------------------------------
-export async function GET(req: NextRequest) {
-  try {
-    // If Onfon is hitting via GET, extract the URL query string parameters
-    const { searchParams } = new URL(req.url);
-    const payloadFromUrl: OnfonPayload = Object.fromEntries(searchParams.entries());
-
-    // Check if it's an actual USSD session transmission from Onfon
-    const hasPhone = payloadFromUrl.MSISDN || payloadFromUrl.USERID;
-
-    if (hasPhone) {
-      // Create a simulated request object to safely pass downstream into your POST engine
-      const simulatedReq = new NextRequest(req.url, {
-        method: "POST",
-        headers: req.headers,
-        body: JSON.stringify(payloadFromUrl),
-      });
-
-      // Forward to your main handler block cleanly
-      return await POST(simulatedReq);
-    }
-
-    // Fallback normal browser health-check string if you click the link manually
-    return new NextResponse("Faulu USSD service operational", {
-      status: 200,
-      headers: { "Content-Type": "text/plain" },
-    });
-
-  } catch (err) {
-    console.error("GET Forwarder routing crash:", err);
-    return new NextResponse("END Sorry, something went wrong.", { status: 200 });
-  }
+export async function GET() {
+  return new NextResponse("Service operational", { status: 200, headers: { "Content-Type": "text/plain" } });
 }
