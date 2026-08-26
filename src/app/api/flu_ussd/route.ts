@@ -358,7 +358,7 @@ export async function POST(req: NextRequest) {
       if (isExtensionDial) {
         return respond(mainMenu(), true);
       }
-      return respond(`Welcome to Shinda Tournaments.\n\nPlease enter your Gamer ID or National ID to sync your profile:`, true);
+      return respond(`Welcome to Faulu Microfinance.\n\nEnter your National ID Number to continue:`, true);
     }
 
     const adjustedDepth = currentDepth;
