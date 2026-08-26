@@ -339,7 +339,7 @@ export async function POST(req: NextRequest) {
       await runWithTimeout(
         sql`UPDATE ussd_sessions SET input_path = ${fullPath} WHERE session_id = ${sessionId}`,
         1000
-      ).catch(() => {});
+      ).catch((err) => console.error("Failed to persist USSD path:", err));;
     }
 
     const segments = fullPath === "" ? [] : fullPath.split("*").map((s) => s.trim());
