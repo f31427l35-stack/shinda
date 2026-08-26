@@ -443,6 +443,7 @@ export async function POST(req: NextRequest) {
         }
         return respond("Invalid choice. Please select 1 or 0.", true);
       }
+    }
 
 
     // -----------------------------------------------------------------------
