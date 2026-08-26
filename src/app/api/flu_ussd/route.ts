@@ -72,9 +72,7 @@ function safeDecode(v: string): string {
   }
 }
 
-const rawInput = safeDecode(
-  (payload.USSD_STRING || payload.INPUT || "").trim()
-);
+
 
 // ---------------------------------------------------------------------------
 // Main menu
@@ -280,7 +278,13 @@ export async function POST(req: NextRequest) {
 
   const rawPhone = (payload.MSISDN || "").trim();
   const sessionId = payload.SESSION_ID || payload.SESSIONID || "";
-  const rawInput = (payload.USSD_STRING || payload.INPUT || "").trim();
+  const rawInput = safeDecode(
+    (
+      payload.USSD_STRING ||
+      payload.INPUT ||
+      ""
+    ).trim()
+  );
   const incomingServiceCode = (payload.USSDCODE || "").trim();
   console.log("USSD_DEBUG", JSON.stringify({ rawPhone, sessionId, rawInput, incomingServiceCode }));
 
