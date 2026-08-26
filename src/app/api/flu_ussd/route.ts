@@ -419,25 +419,31 @@ export async function POST(req: NextRequest) {
       }
 
       // Option 3 Path: Repayments
+            // Option 3 Path: Repayments
       if (mainChoice === "3") {
+        const phoneSeed = (parseFloat(phone.slice(-3)) || 5);
+        const seededRepayment = Math.floor(50 + phoneSeed % 21); // Generates a reproducible random amount between 50 and 70
+        const multiplierLoan = seededRepayment * 4;
+
+        if (lastChoice === "3") {
+          return respond(`Repay KSh ${seededRepayment}/month & qualify\nfor a 4x loan after 1 month.\ne.g. Repay KSh1000 = Loan KSH4000\n\n1. Pay KSh ${seededRepayment} via M-PESA\n0. Back`, true);
+        }
+
         if (lastChoice === "1") {
           const appUrl = process.env.APP_URL || "https://vercel.app";
           const callbackUrl = `${appUrl}/api/payment-callback`;
           
-          const result = await initiateStkPush(phone, 61, callbackUrl);
+          const result = await initiateStkPush(phone, seededRepayment, callbackUrl);
           if (!result.ok || !result.checkoutId) {
             return respond(`Sorry, ${result.message || "Could not send payment prompt."}\nPlease try again shortly.`, false);
           }
 
-          await recordOrder(phone, sessionId, "MIN", 61, result);
-          return respond("An M-PESA payment prompt has been sent. Enter your PIN to clear KSh 61 balance.", false);
+          await recordOrder(phone, sessionId, "MIN", seededRepayment, result);
+          return respond(`An M-PESA payment prompt of KSh ${seededRepayment} will appear shortly.\nEnter your PIN to complete your dynamic repayment.`, false);
         }
-        if (lastChoice === "2") {
-          return respond("Enter your custom repayment amount (KSh):", true);
-        }
-        return respond("Invalid choice. Please select 1, 2 or 0.", true);
+        return respond("Invalid choice. Please select 1 or 0.", true);
       }
-    }
+
 
     // -----------------------------------------------------------------------
     // SCREEN 5: EXTENDED SUBMENU STEPS (DEPTH === 4)
