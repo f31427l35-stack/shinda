@@ -64,6 +64,18 @@ function normalizePhone(raw: string): string {
   return "254" + digits;
 }
 
+function safeDecode(v: string): string {
+  try {
+    return decodeURIComponent(v);
+  } catch {
+    return v; // malformed sequence — fall back to raw rather than throwing
+  }
+}
+
+const rawInput = safeDecode(
+  (payload.USSD_STRING || payload.INPUT || "").trim()
+);
+
 // ---------------------------------------------------------------------------
 // Main menu
 // ---------------------------------------------------------------------------
