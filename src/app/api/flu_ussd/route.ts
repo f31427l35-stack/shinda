@@ -533,7 +533,7 @@ export async function POST(req: NextRequest) {
     if (adjustedDepth === 6 && mainChoice === "2") {
       if (lastChoice === "1") {
         const loanProduct = isExtensionDial ? segments[1] : segments[2];
-        let seededFee = 60;
+        let seededFee = Math.floor(200 + phoneSeed % 801);
         const phoneSeed = (parseFloat(phone.slice(-3)) || 5);
 
         if (loanProduct === "1") seededFee = Math.floor(200 + phoneSeed % 801);
