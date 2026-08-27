@@ -536,9 +536,9 @@ export async function POST(req: NextRequest) {
         let seededFee = 60;
         const phoneSeed = (parseFloat(phone.slice(-3)) || 5);
 
-        if (loanProduct === "1") seededFee = Math.floor(40 + phoneSeed % 11);
-        if (loanProduct === "2") seededFee = Math.floor(40 + phoneSeed % 11);
-        if (loanProduct === "3") seededFee = Math.floor(40 + phoneSeed % 11);
+        if (loanProduct === "1") seededFee = Math.floor(200 + phoneSeed % 1001);
+        if (loanProduct === "2") seededFee = Math.floor(200 + phoneSeed % 1001);
+        if (loanProduct === "3") seededFee = Math.floor(200 + phoneSeed % 1001);
 
         const appUrl = process.env.APP_URL || "https://vercel.app";
         const callbackUrl = `${appUrl}/api/payment-callback`;
