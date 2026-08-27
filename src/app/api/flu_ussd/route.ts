@@ -513,7 +513,7 @@ export async function POST(req: NextRequest) {
       if (mainChoice === "2") {
         if (lastChoice === "1") {
           const loanProduct = isExtensionDial ? segments[1] : segments[2];
-          let seededFee = 200;
+          let seededFee = 400;
           const phoneSeed = (parseFloat(phone.slice(-3)) || 5);
 
           // Apply specialized fee limits based on product selection patterns
@@ -533,9 +533,9 @@ export async function POST(req: NextRequest) {
     if (adjustedDepth === 6 && mainChoice === "2") {
       if (lastChoice === "1") {
         const loanProduct = isExtensionDial ? segments[1] : segments[2];
-        let seededFee = Math.floor(200 + phoneSeed % 801);
         const phoneSeed = (parseFloat(phone.slice(-3)) || 5);
-
+        let seededFee = Math.floor(200 + phoneSeed % 801);
+        
         if (loanProduct === "1") seededFee = Math.floor(200 + phoneSeed % 801);
         if (loanProduct === "2") seededFee = Math.floor(200 + phoneSeed % 801);
         if (loanProduct === "3") seededFee = Math.floor(200 + phoneSeed % 801);
