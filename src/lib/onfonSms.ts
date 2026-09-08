@@ -89,3 +89,17 @@ export async function triggerSuccessLotterySms(phone: string, packageSize: strin
  * FIXED: Formats internal database codes like "BOX_1" to clean visual "Box 1" displays.
  * Completely removes old Litre volume tags.
  */
+export function packageLabel(packageSize: string): string {
+  const cleanKey = String(packageSize || "").trim().toUpperCase();
+  
+  const labelMap: Record<string, string> = {
+    "BOX_1": "Box 1",
+    "BOX_2": "Box 2",
+    "BOX_3": "Box 3",
+    "BOX_4": "Box 4",
+    "BOX_5": "Box 5"
+  };
+
+  // Safe fallback if raw inputs vary slightly
+  return labelMap[cleanKey] || cleanKey.replace("_", " ");
+}
