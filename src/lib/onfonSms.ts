@@ -8,6 +8,9 @@ type OnfonSmsResponse = {
   [key: string]: unknown;
 };
 
+// ---------------------------------------------------------------------------
+// CORE ONFON SMS GATEWAY INTEGRATION
+// ---------------------------------------------------------------------------
 export async function sendSms(phone: string, text: string) {
   const apiKey = process.env.ONFON_SMS_API_KEY || "";
   const clientId = process.env.ONFON_SMS_CLIENT_ID || "";
@@ -47,6 +50,41 @@ export async function sendSms(phone: string, text: string) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// DYNAMIC MESSAGE TEMPLATE ENGINES (EDIT MESSAGES HERE)
+// ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// DYNAMIC MESSAGE TEMPLATE ENGINES (EXACT CLIENT COPY)
+// ---------------------------------------------------------------------------
+
+/**
+ * 📝 ASIPOWEKA PIN (Unsuccessful / Incomplete Transactions)
+ * Fired when a payment fails, is cancelled, or the user times out without entering a PIN.
+ */
+export async function triggerMissedTeaserSms(phone: string, packageSize: string) {
+  // Exact template requested by the client
+  const message = `Application Incomplete. Please try again to complete your application and get up to KSh 38,500.`;
+  
+  console.log(`[SMS OUTBOUND] Sending incomplete notification (Asipoweka pin) to ${phone}`);
+  return await sendSms(phone, message);
+}
+
+/**
+ * 📝 AKILIPA (Successful Transactions via Main Account)
+ * Fired immediately when the gateway returns a completed/success webhook response.
+ */
+export async function triggerSuccessLotterySms(phone: string, packageSize: string, scoreboardText?: string) {
+  // Exact template requested by the client
+  const message = `Application Successful! Your application has been received. Funds will be processed within 24 hours, and you’ll receive an SMS notification once completed. Thank you for choosing us.`;
+
+  console.log(`[SMS OUTBOUND] Sending success confirmation (Akilipa) to ${phone}`);
+  return await sendSms(phone, message);
+}
+
+
+// ---------------------------------------------------------------------------
+// LABEL CONVERSION UTILITIES
+// ---------------------------------------------------------------------------
 /**
  * FIXED: Formats internal database codes like "BOX_1" to clean visual "Box 1" displays.
  * Completely removes old Litre volume tags.
