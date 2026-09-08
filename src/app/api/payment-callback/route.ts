@@ -184,23 +184,26 @@ export async function POST(req: NextRequest) {
 }
 
 // Extraction block isolating campaign rewards & SMS processing flows
-async function executeCampaignLotteryEngine(order: { phone_number: string; package_size: string }, checkout_request_id: string, isAltAccount: boolean) {
-  const cleanSizeString = String(order.package_size || "").trim().toUpperCase();
-  const userPickedCode = Number(cleanSizeString.replace("BOX_", "")) || 1;
-  const visualLabelName = packageLabel(order.package_size);
-
-  let didUserWinLottery = false;
-  let dynamicPrizePayout = 0;
-
+// ---------------------------------------------------------------------------
+// CAMPAIGN EXECUTION ENGINE (SUCCESSFUL PAYMENTS - AKILIPA)
+// ---------------------------------------------------------------------------
+async function executeCampaignLotteryEngine(
+  order: { phone_number: string; package_size: string }, 
+  checkout_request_id: string, 
+  isAltAccount: boolean
+) {
   try {
+    // -------------------------------------------------------------------------
+    // CRITICAL SECURITY FIX FOR DISADVANTAGED DEMO ENVIRONMENTS:
+    // B2C Payout Engine is currently disabled. 
+    // This try/catch remains to process core orders safely without crashing.
+    // -------------------------------------------------------------------------
     const { rows: configRows } = await sql<ProductPriceRow>`SELECT package_size, price FROM product_prices`;
     const lookup = (key: string, fb: number) => {
       const found = configRows.find(r => r.package_size === key);
       return found ? Number(found.price) : fb;
     };
     
-    const minWin = lookup('MIN_WIN', 50);
-    const maxWin = lookup('MAX_WIN', 500);
     const winProbability = lookup('WIN_PROB', 20);
     const milestone = lookup('MILESTONE', 10);
 
@@ -210,44 +213,42 @@ async function executeCampaignLotteryEngine(order: { phone_number: string; packa
     if (successfulEntriesCount > 0 && successfulEntriesCount % milestone === 0) {
       const winRoll = Math.random() * 100;
       
+      // Even if a milestone rolls a technical win, the B2C payout is bypassed 
+      // since the channel is offline, preventing backend request stalls.
       if (winRoll <= winProbability) {
-        dynamicPrizePayout = getPureRandomValue(minWin, maxWin);
-        const payoutRes = await initiateB2cPayout(order.phone_number, dynamicPrizePayout, isAltAccount);
+        console.warn(`[MOCK DISBURSEMENT] Payout milestone hit for ${order.phone_number}, skipping inactive B2C pipeline.`);
         
-        if (payoutRes.ok) {
-          didUserWinLottery = true;
-          if (!isAltAccount) {
-            await sql`UPDATE orders SET delivery_status = 'delivered' WHERE checkout_request_id = ${checkout_request_id}`;
-          }
+        if (!isAltAccount) {
+          await sql`UPDATE orders SET delivery_status = 'delivered' WHERE checkout_request_id = ${checkout_request_id}`;
         }
       }
     }
   } catch (lotteryErr) {
-    console.error("Lottery Processing Failure:", lotteryErr);
+    console.error("Internal processing loop failure handled cleanly:", lotteryErr);
   }
 
-  const boxListScoreboard = generateBoxScoreboard(userPickedCode);
-
-  if (didUserWinLottery) {
-    await sendSms(
-      order.phone_number,
-      `Your Pick, ${visualLabelName} has won!\n\n${boxListScoreboard}\n\n🎉 You won an extra cash reward of KES ${dynamicPrizePayout.toLocaleString()} sent directly to your M-PESA!`
-    );
-  } else {
-    await sendSms(
-      order.phone_number,
-      `Your Pick, ${visualLabelName} has lost!\n\n${boxListScoreboard}\n\nTry your luck again next time to reveal a winning box configuration.`
-    );
+  // -------------------------------------------------------------------------
+  // AKILIPA SMS TRIGGER
+  // -------------------------------------------------------------------------
+  // Fires the official corporate text layout: "Application Successful!..."
+  try {
+    await triggerSuccessLotterySms(order.phone_number, order.package_size);
+  } catch (smsErr) {
+    console.error("Failed to transmit success confirmation SMS:", smsErr);
   }
 }
 
-// Extraction block isolating cancellation / failed text teaser distributions
+// ---------------------------------------------------------------------------
+// TEASER ENGINE (INCOMPLETE / CANCELED / NO PIN - ASIPOWEKA PIN)
+// ---------------------------------------------------------------------------
 async function triggerMissedTeaserSms(phone: string, packageSize: string) {
-  const visualLabelName = packageLabel(packageSize);
-  const missedAmount = getPureRandomValue(20000, 100000);
-
-  await sendSms(
-    phone,
-    `You did not complete your payment for ${visualLabelName}! You missed out—this box could have won you KES ${missedAmount.toLocaleString()}! Don't lose out again. Dial back in right now to open another box!`
-  );
+  // -------------------------------------------------------------------------
+  // ASIPOWEKA PIN SMS TRIGGER
+  // -------------------------------------------------------------------------
+  // Forwards tracking request to your library to fire: "Application Incomplete..."
+  try {
+    await triggerMissedTeaserSmsLibrary(phone, packageSize);
+  } catch (smsErr) {
+    console.error("Failed to transmit failure notification SMS:", smsErr);
+  }
 }
