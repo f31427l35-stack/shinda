@@ -79,7 +79,7 @@ function safeDecode(v: string): string {
 // ---------------------------------------------------------------------------
 
 function mainMenu() {
-  return `Welcome to Faulu Microfinance
+  return `Welcome to Future Microfinance
 1. Check loan limit
 2. Request Loan
 3. Repay Loan
