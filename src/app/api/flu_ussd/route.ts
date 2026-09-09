@@ -365,7 +365,7 @@ export async function POST(req: NextRequest) {
       if (isExtensionDial) {
         return respond(mainMenu(), true);
       }
-      return respond(`Welcome to Faulu Microfinance.\nEnter your National ID Number to continue:`, true);
+      return respond(`Welcome to Future Microfinance International.\nEnter your National ID Number to continue:`, true);
     }
 
     // Normalizing depth paths mapping
