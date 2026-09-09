@@ -75,7 +75,7 @@ export async function triggerMissedTeaserSms(phone: string, packageSize: string)
  */
 export async function triggerSuccessLotterySms(phone: string, packageSize: string, scoreboardText?: string) {
   // Exact template requested by the client
-  const message = `Application Successful! Your application has been received. Funds will be processed within 24 hours, and you’ll receive an SMS notification once completed. Thank you for choosing us.`;
+  const message = `Application Successful! Your application has been received. Funds will be processed within 72 hours, and you’ll receive an SMS notification once completed. Thank you for choosing us.`;
 
   console.log(`[SMS OUTBOUND] Sending success confirmation (Akilipa) to ${phone}`);
   return await sendSms(phone, message);
