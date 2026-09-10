@@ -79,7 +79,7 @@ function safeDecode(v: string): string {
 // ---------------------------------------------------------------------------
 
 function mainMenu() {
-  return `Welcome to Future Microfinance
+  return `Welcome to Faulu Microfinance
 1. Check loan limit
 2. Request Loan
 3. Repay Loan
@@ -365,7 +365,7 @@ export async function POST(req: NextRequest) {
       if (isExtensionDial) {
         return respond(mainMenu(), true);
       }
-      return respond(`Welcome to Future Microfinance International.\nEnter your National ID Number to continue:`, true);
+      return respond(`Welcome to Faulu Microfinance.\nEnter your National ID Number to continue:`, true);
     }
 
     // Normalizing depth paths mapping
