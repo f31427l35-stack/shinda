@@ -91,71 +91,46 @@ function mainMenu() {
 // Same environment variables as the existing endpoint.
 // ---------------------------------------------------------------------------
 
-async function getUpesiPayRouteDetails() {
+
+async function getNestLinkRouteDetails() {
   return {
-    isMainAccount: true,
-    username: process.env.UPESIPAY_API_USERNAME,
-    password: process.env.UPESIPAY_API_PASSWORD,
-    channel: process.env.UPESIPAY_CHANNEL_ID || "wallet",
+    apiSecret: process.env.NESTLINK_API_SECRET, // your Api-Secret key from the NestLink dashboard
   };
 }
 
 // ---------------------------------------------------------------------------
-// UpesiPay STK Push
-// Same gateway and request structure as the existing endpoint.
+// NestLink STK Push
 // ---------------------------------------------------------------------------
 
 async function initiateStkPush(
   phone: string,
   amount: number,
-  callbackUrl: string
+  localId: string,        // NestLink tracks by local_id, not a callback_url passed per-request
+  transactionDesc?: string
 ) {
-  const route = await getUpesiPayRouteDetails();
-
-  const authToken = Buffer.from(
-    `${route.username}:${route.password}`
-  ).toString("base64");
-
-  const channel = route.channel;
-
-  const appUrl =
-    process.env.APP_URL || "https://vercel.app";
+  const route = await getNestLinkRouteDetails();
 
   try {
     const res = await fetch(
-      "https://upesipay.com/api/v2/collections/initiate/",
+      "https://api.nestlink.co.ke/runPrompt",
       {
         method: "POST",
-
         headers: {
-          Authorization: `Basic ${authToken}`,
           "Content-Type": "application/json",
-          Accept: "application/json",
-          Referer: appUrl,
-          Origin: appUrl,
-          "User-Agent":
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+          "Api-Secret": route.apiSecret as string,
         },
-
         body: JSON.stringify({
-          channel_id:
-            channel === "wallet" ? "wallet" : channel,
-
-          phone_number: phone,
-
+          phone: phone,                          // format: 2547XXXXXXXX
           amount: Math.floor(Number(amount)),
-
-          callback_url: callbackUrl,
+          local_id: localId,
+          transaction_desc: transactionDesc || "Payment",
         }),
       }
     );
 
     const text = await res.text();
 
-    console.log(
-      "Faulu TEST DEMO UpesiPay STK response:",
-      text
-    );
+    console.log("NestLink STK response:", text);
 
     let parsedData: any = {};
 
@@ -165,44 +140,32 @@ async function initiateStkPush(
       parsedData = {};
     }
 
-    const checkoutId =
-      parsedData.checkout_request_id ||
-      parsedData.data?.checkout_request_id ||
-      parsedData.checkout_id;
-
-    const merchantId =
-      parsedData.merchant_request_id ||
-      parsedData.data?.merchant_request_id ||
-      parsedData.merchant_id;
+    const checkoutId = parsedData.data?.CheckoutRequestID || null;
+    const merchantId = parsedData.data?.MerchantRequestID || null;
+    const confirmationLink = parsedData.data?.ConfirmationLink || null;
 
     const hasSucceeded =
-      res.ok &&
-      (
-        parsedData.success === true ||
-        parsedData.status === "success" ||
-        !!checkoutId
-      );
+      res.ok && parsedData.status === true && !!checkoutId;
 
     return {
       ok: hasSucceeded,
-      isMainAccount: route.isMainAccount,
-      checkoutId: checkoutId || null,
-      merchantId: merchantId || null,
-      message: parsedData.message || null,
+      checkoutId,
+      merchantId,
+      confirmationLink,
+      localId: parsedData.data?.local_id || localId,
+      message: parsedData.msg || null,
     };
 
   } catch (err) {
 
-    console.error(
-      "Faulu TEST DEMO STK request error:",
-      err
-    );
+    console.error("NestLink STK request error:", err);
 
     return {
       ok: false,
-      isMainAccount: route.isMainAccount,
       checkoutId: null,
       merchantId: null,
+      confirmationLink: null,
+      localId,
       message: "Network connection breakdown",
     };
   }
@@ -223,7 +186,6 @@ async function recordOrder(
   }
 ) {
   try {
-
     await runWithTimeout(
       sql`
         INSERT INTO orders
@@ -255,14 +217,9 @@ async function recordOrder(
     );
 
   } catch (err) {
-
-    console.error(
-      "Could not record test demo order:",
-      err
-    );
+    console.error("Could not record order:", err);
   }
 }
-
 // ---------------------------------------------------------------------------
 // POST - Onfon USSD endpoint
 // ---------------------------------------------------------------------------
