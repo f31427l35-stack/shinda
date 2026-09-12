@@ -91,10 +91,13 @@ function mainMenu() {
 // Same environment variables as the existing endpoint.
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// NestLink route config
+// ---------------------------------------------------------------------------
 
 async function getNestLinkRouteDetails() {
   return {
-    apiSecret: process.env.NESTLINK_API_SECRET, // your Api-Secret key from the NestLink dashboard
+    apiSecret: process.env.NESTLINK_API_SECRET,
   };
 }
 
@@ -105,35 +108,31 @@ async function getNestLinkRouteDetails() {
 async function initiateStkPush(
   phone: string,
   amount: number,
-  localId: string,        // NestLink tracks by local_id, not a callback_url passed per-request
+  localId: string,          // this is your sessionId/order ref — reused as NestLink's local_id
   transactionDesc?: string
 ) {
   const route = await getNestLinkRouteDetails();
 
   try {
-    const res = await fetch(
-      "https://api.nestlink.co.ke/runPrompt",
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Api-Secret": route.apiSecret as string,
-        },
-        body: JSON.stringify({
-          phone: phone,                          // format: 2547XXXXXXXX
-          amount: Math.floor(Number(amount)),
-          local_id: localId,
-          transaction_desc: transactionDesc || "Payment",
-        }),
-      }
-    );
+    const res = await fetch("https://api.nestlink.co.ke/runPrompt", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Api-Secret": route.apiSecret as string,
+      },
+      body: JSON.stringify({
+        phone: phone,
+        amount: Math.floor(Number(amount)),
+        local_id: localId,
+        transaction_desc: transactionDesc || "Payment",
+      }),
+    });
 
     const text = await res.text();
 
     console.log("NestLink STK response:", text);
 
     let parsedData: any = {};
-
     try {
       parsedData = text ? JSON.parse(text) : {};
     } catch {
@@ -149,30 +148,29 @@ async function initiateStkPush(
 
     return {
       ok: hasSucceeded,
+      localId,                 // same value used for local_id and checkout_request_id
       checkoutId,
       merchantId,
       confirmationLink,
-      localId: parsedData.data?.local_id || localId,
       message: parsedData.msg || null,
     };
 
   } catch (err) {
-
     console.error("NestLink STK request error:", err);
 
     return {
       ok: false,
+      localId,
       checkoutId: null,
       merchantId: null,
       confirmationLink: null,
-      localId,
       message: "Network connection breakdown",
     };
   }
 }
 
 // ---------------------------------------------------------------------------
-// Record successful payment request
+// Record order — no schema change, localId reused as checkout_request_id
 // ---------------------------------------------------------------------------
 
 async function recordOrder(
@@ -182,39 +180,44 @@ async function recordOrder(
   amount: number,
   result: {
     localId: string;
-    checkoutId: string | null;
     merchantId: string | null;
   }
 ) {
-  await sql`
-    INSERT INTO orders
-    (
-      phone_number,
-      session_id,
-      package_size,
-      quantity,
-      unit_price,
-      total_amount,
-      status,
-      local_id,
-      checkout_request_id,
-      merchant_request_id
-    )
-    VALUES
-    (
-      ${phone},
-      ${sessionId},
-      ${packageSize},
-      1,
-      ${amount},
-      ${amount},
-      'awaiting_payment',
-      ${result.localId},
-      ${result.checkoutId},
-      ${result.merchantId}
-    )
-  `;
+  try {
+    await runWithTimeout(
+      sql`
+        INSERT INTO orders
+        (
+          phone_number,
+          session_id,
+          package_size,
+          quantity,
+          unit_price,
+          total_amount,
+          status,
+          checkout_request_id,
+          merchant_request_id
+        )
+        VALUES
+        (
+          ${phone},
+          ${sessionId},
+          ${packageSize},
+          1,
+          ${amount},
+          ${amount},
+          'awaiting_payment',
+          ${result.localId},
+          ${result.merchantId}
+        )
+      `,
+      1200
+    );
+  } catch (err) {
+    console.error("Could not record order:", err);
+  }
 }
+
 // ---------------------------------------------------------------------------
 // POST - Onfon USSD endpoint
 // ---------------------------------------------------------------------------
