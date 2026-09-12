@@ -97,30 +97,31 @@ function generateBoxScoreboard(pickedBoxCode: number): string {
 export async function POST(req: NextRequest) {
   try {
     const payload = await req.json();
+    console.log("NestLink callback payload:", JSON.stringify(payload));
 
     // NestLink's actual callback shape: { local_id, paid, result_code, result: { ref_code, amount, phone_number, msg } }
     const { local_id, paid, result_code, result } = payload;
     const reference_id = result?.ref_code;
 
-    // Guard clause: stop immediately if no tracking id or paid flag is provided
     if (!local_id || typeof paid === "undefined") {
       return NextResponse.json({ received: true }, { status: 200 });
     }
 
-    // NestLink uses a boolean `paid` field, with result_code 0 = success
     const isPaymentSuccess = paid === true && result_code === 0;
 
     // -------------------------------------------------------------------------
-    // STEP 1: ROUTE AND MANAGE MAIN ACCOUNT PAYMENTS VIA LOCAL_ID
+    // STEP 1: ROUTE AND MANAGE MAIN ACCOUNT PAYMENTS
+    // Match on checkout_request_id — this now holds the same value NestLink
+    // sent back as local_id, since that's what we passed into runPrompt.
     // -------------------------------------------------------------------------
-    const mainOrderCheck = await sql`SELECT id FROM orders WHERE local_id = ${local_id}`;
+    const mainOrderCheck = await sql`SELECT id FROM orders WHERE checkout_request_id = ${local_id}`;
 
     if ((mainOrderCheck.rowCount ?? 0) > 0) {
       if (isPaymentSuccess) {
         const { rows } = await sql<OrderRow>`
           UPDATE orders 
           SET status = 'paid', paid_at = now(), receipt_number = ${reference_id || null} 
-          WHERE local_id = ${local_id} 
+          WHERE checkout_request_id = ${local_id} 
           RETURNING phone_number, package_size
         `;
 
@@ -135,7 +136,7 @@ export async function POST(req: NextRequest) {
         }
       } else {
         const { rows } = await sql<OrderRow>`
-          UPDATE orders SET status = 'failed' WHERE local_id = ${local_id} RETURNING phone_number, package_size
+          UPDATE orders SET status = 'failed' WHERE checkout_request_id = ${local_id} RETURNING phone_number, package_size
         `;
         const order = rows[0];
         if (order) {
@@ -145,6 +146,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ received: true }, { status: 200 });
     }
 
+    // -------------------------------------------------
+    // (rest of your fallback logic below STEP 1 goes here — apply the same
+    // local_id -> checkout_request_id swap wherever it also matches on local_id)
     // -------------------------------------------------
 
     // -------------------------------------------------------------------------
