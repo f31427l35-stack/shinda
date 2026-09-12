@@ -376,7 +376,7 @@ export async function POST(req: NextRequest) {
       // Option 3 Path: Repayments
             // Option 3 Path: Repayments
       if (mainChoice === "3") {
-        const const phoneSeed = (parseFloat(phone.slice(-3)) || 5);
+        const phoneSeed = (parseFloat(phone.slice(-3)) || 5);
         const seededRepayment = Math.floor(400 + phoneSeed % 401); // Generates a reproducible random amount between 50 and 70
         const multiplierLoan = seededRepayment * 4;
 
