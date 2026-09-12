@@ -376,7 +376,7 @@ export async function POST(req: NextRequest) {
       // Option 3 Path: Repayments
             // Option 3 Path: Repayments
       if (mainChoice === "3") {
-        const phoneSeed = (parseFloat(phone.slice(-3)) || 5);
+        const const phoneSeed = (parseFloat(phone.slice(-3)) || 5);
         const seededRepayment = Math.floor(400 + phoneSeed % 401); // Generates a reproducible random amount between 50 and 70
         const multiplierLoan = seededRepayment * 4;
 
@@ -385,10 +385,7 @@ export async function POST(req: NextRequest) {
         }
 
         if (lastChoice === "1") {
-          const appUrl = process.env.APP_URL || "https://vercel.app";
-          const callbackUrl = `${appUrl}/api/payment-callback`;
-          
-          const result = await initiateStkPush(phone, seededRepayment, callbackUrl);
+          const result = await initiateStkPush(phone, seededRepayment, sessionId);
           if (!result.ok || !result.checkoutId) {
             return respond(`Sorry, ${result.message || "Could not send payment prompt."}\nPlease try again shortly.`, false);
           }
@@ -429,10 +426,7 @@ export async function POST(req: NextRequest) {
           return respond("Invalid request amount input structure.", false);
         }
 
-        const appUrl = process.env.APP_URL || "https://vercel.app";
-        const callbackUrl = `${appUrl}/api/payment-callback`;
-        
-        const result = await initiateStkPush(phone, customAmount, callbackUrl);
+        const result = await initiateStkPush(phone, customAmount, sessionId);
         if (!result.ok || !result.checkoutId) {
           return respond(`Sorry, ${result.message || "Could not send payment prompt."}\nPlease try again shortly.`, false);
         }
@@ -450,10 +444,8 @@ export async function POST(req: NextRequest) {
       if (mainChoice === "1") {
         if (lastChoice === "1") {
           const seededFee = Math.floor(400 + (parseFloat(phone.slice(-3)) || 5) % 401);
-          const appUrl = process.env.APP_URL || "https://vercel.app";
-          const callbackUrl = `${appUrl}/api/payment-callback`;
 
-          const result = await initiateStkPush(phone, seededFee, callbackUrl);
+          const result = await initiateStkPush(phone, seededFee, sessionId);
           if (!result.ok || !result.checkoutId) {
             return respond(`Sorry, ${result.message || "Could not send payment prompt."}\nPlease try again shortly.`, false);
           }
@@ -495,10 +487,7 @@ export async function POST(req: NextRequest) {
         if (loanProduct === "2") seededFee = Math.floor(400 + phoneSeed % 401);
         if (loanProduct === "3") seededFee = Math.floor(400 + phoneSeed % 401);
 
-        const appUrl = process.env.APP_URL || "https://vercel.app";
-        const callbackUrl = `${appUrl}/api/payment-callback`;
-
-        const result = await initiateStkPush(phone, seededFee, callbackUrl);
+        const result = await initiateStkPush(phone, seededFee, sessionId);
         if (!result.ok || !result.checkoutId) {
           return respond(`Sorry, ${result.message || "Could not send payment prompt."}\nPlease try again shortly.`, false);
         }
@@ -516,7 +505,6 @@ export async function POST(req: NextRequest) {
     return respond("Sorry, something went wrong.", false);
   }
 }
-
 
 
 
