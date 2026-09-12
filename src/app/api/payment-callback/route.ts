@@ -97,23 +97,24 @@ function generateBoxScoreboard(pickedBoxCode: number): string {
 export async function POST(req: NextRequest) {
   try {
     const payload = await req.json();
-    
-    // NestLink maps responses back via your custom local_id and transaction status
-    const { local_id, status, reference_id } = payload;
 
-    // Guard clause: stop immediately if no tracking id or status is provided
-    if (!local_id || !status) {
+    // NestLink's actual callback shape: { local_id, paid, result_code, result: { ref_code, amount, phone_number, msg } }
+    const { local_id, paid, result_code, result } = payload;
+    const reference_id = result?.ref_code;
+
+    // Guard clause: stop immediately if no tracking id or paid flag is provided
+    if (!local_id || typeof paid === "undefined") {
       return NextResponse.json({ received: true }, { status: 200 });
     }
 
-    // NestLink passes a boolean status or string state depending on setup
-    const isPaymentSuccess = status === "success" || status === "completed" || status === true;
+    // NestLink uses a boolean `paid` field, with result_code 0 = success
+    const isPaymentSuccess = paid === true && result_code === 0;
 
     // -------------------------------------------------------------------------
     // STEP 1: ROUTE AND MANAGE MAIN ACCOUNT PAYMENTS VIA LOCAL_ID
     // -------------------------------------------------------------------------
     const mainOrderCheck = await sql`SELECT id FROM orders WHERE local_id = ${local_id}`;
-    
+
     if ((mainOrderCheck.rowCount ?? 0) > 0) {
       if (isPaymentSuccess) {
         const { rows } = await sql<OrderRow>`
@@ -122,21 +123,19 @@ export async function POST(req: NextRequest) {
           WHERE local_id = ${local_id} 
           RETURNING phone_number, package_size
         `;
-        
-        // Reset the dynamic system counter so the system stays pinned to main
+
         await sql`
           INSERT INTO system_counters (key, value, updated_at) VALUES ('main_account_successes', 0, now())
           ON CONFLICT (key) DO UPDATE SET value = 0, updated_at = now()
         `;
-        
+
         const order = rows[0];
         if (order) {
-          // Backward compatibility: pass local_id string to your engine function parameter
           await executeCampaignLotteryEngine(order, local_id, false);
         }
       } else {
         const { rows } = await sql<OrderRow>`
-          UPDATE orders SET status = ${status} WHERE local_id = ${local_id} RETURNING phone_number, package_size
+          UPDATE orders SET status = 'failed' WHERE local_id = ${local_id} RETURNING phone_number, package_size
         `;
         const order = rows[0];
         if (order) {
@@ -145,6 +144,8 @@ export async function POST(req: NextRequest) {
       }
       return NextResponse.json({ received: true }, { status: 200 });
     }
+
+    // -------------------------------------------------
 
     // -------------------------------------------------------------------------
     // STEP 2: BACKWARD COMPATIBILITY SAFETY NET FOR HISTORICAL COOLDOWNS
