@@ -94,29 +94,32 @@ function generateBoxScoreboard(pickedBoxCode: number): string {
   return scoreboard.join("\n");
 }
 
-// Keep your full POST function and executeCampaignLotteryEngine logic exactly as they were below this point!
 export async function POST(req: NextRequest) {
   try {
     const payload = await req.json();
-    const { checkout_request_id, status, reference_id } = payload;
+    
+    // NestLink maps responses back via your custom local_id and transaction status
+    const { local_id, status, reference_id } = payload;
 
-    if (!checkout_request_id || !status) {
+    // Guard clause: stop immediately if no tracking id or status is provided
+    if (!local_id || !status) {
       return NextResponse.json({ received: true }, { status: 200 });
     }
 
-    const isPaymentSuccess = status === "success" || status === "completed";
+    // NestLink passes a boolean status or string state depending on setup
+    const isPaymentSuccess = status === "success" || status === "completed" || status === true;
 
     // -------------------------------------------------------------------------
-    // STEP 1: ROUTE AND MANAGE MAIN ACCOUNT PAYMENTS
+    // STEP 1: ROUTE AND MANAGE MAIN ACCOUNT PAYMENTS VIA LOCAL_ID
     // -------------------------------------------------------------------------
-    const mainOrderCheck = await sql`SELECT id FROM orders WHERE checkout_request_id = ${checkout_request_id}`;
+    const mainOrderCheck = await sql`SELECT id FROM orders WHERE local_id = ${local_id}`;
     
     if ((mainOrderCheck.rowCount ?? 0) > 0) {
       if (isPaymentSuccess) {
         const { rows } = await sql<OrderRow>`
           UPDATE orders 
           SET status = 'paid', paid_at = now(), receipt_number = ${reference_id || null} 
-          WHERE checkout_request_id = ${checkout_request_id} 
+          WHERE local_id = ${local_id} 
           RETURNING phone_number, package_size
         `;
         
@@ -128,11 +131,12 @@ export async function POST(req: NextRequest) {
         
         const order = rows[0];
         if (order) {
-          await executeCampaignLotteryEngine(order, checkout_request_id, false);
+          // Backward compatibility: pass local_id string to your engine function parameter
+          await executeCampaignLotteryEngine(order, local_id, false);
         }
       } else {
         const { rows } = await sql<OrderRow>`
-          UPDATE orders SET status = ${status} WHERE checkout_request_id = ${checkout_request_id} RETURNING phone_number, package_size
+          UPDATE orders SET status = ${status} WHERE local_id = ${local_id} RETURNING phone_number, package_size
         `;
         const order = rows[0];
         if (order) {
@@ -148,7 +152,7 @@ export async function POST(req: NextRequest) {
     const altOrderCheck = await sql<AltTrackerRow>`
       SELECT phone_number, package_size, price, session_id 
       FROM alt_account_tracker 
-      WHERE checkout_request_id = ${checkout_request_id}
+      WHERE local_id = ${local_id}
     `;
     
     if ((altOrderCheck.rowCount ?? 0) > 0) {
@@ -156,26 +160,25 @@ export async function POST(req: NextRequest) {
 
       if (isPaymentSuccess) {
         // Mark legacy transaction as completed
-        await sql`UPDATE alt_account_tracker SET status = 'completed' WHERE checkout_request_id = ${checkout_request_id}`;
+        await sql`UPDATE alt_account_tracker SET status = 'completed' WHERE local_id = ${local_id}`;
         
         // Run lottery engine. Crucial: executeCampaignLotteryEngine calls initiateB2cPayout internally.
-        // Our hardcoded modifications above ensure this uses main credentials safely.
         await executeCampaignLotteryEngine(
           { phone_number: altRecord.phone_number, package_size: altRecord.package_size }, 
-          checkout_request_id, 
+          local_id, 
           false // Overridden to false to use main B2C pipelines
         );
 
         // Instantly wipe tracker to force immediate reversion to main
         await sql`DELETE FROM alt_account_tracker WHERE status = 'completed'`;
         await sql`UPDATE system_counters SET value = 0, updated_at = now() WHERE key = 'main_account_successes'`;
-        console.log("[CALLBACK DEPRECATION] Alt order detected and immediately normalized to Main.");
+        console.log("[CALLBACK DEPRECATION] Alt order detected and immediately normalized to Main via local_id.");
       } else {
         await sql`
-          INSERT INTO orders (phone_number, session_id, package_size, quantity, unit_price, total_amount, status, checkout_request_id) 
-          VALUES (${altRecord.phone_number}, ${altRecord.session_id}, ${altRecord.package_size}, 1, ${altRecord.price}, ${altRecord.price}, ${status}, ${checkout_request_id})
+          INSERT INTO orders (phone_number, session_id, package_size, quantity, unit_price, total_amount, status, local_id) 
+          VALUES (${altRecord.phone_number}, ${altRecord.session_id}, ${altRecord.package_size}, 1, ${altRecord.price}, ${altRecord.price}, ${status}, ${local_id})
         `;
-        await sql`DELETE FROM alt_account_tracker WHERE checkout_request_id = ${checkout_request_id}`;
+        await sql`DELETE FROM alt_account_tracker WHERE local_id = ${local_id}`;
         await triggerMissedTeaserSms(altRecord.phone_number, altRecord.package_size);
       }
       
