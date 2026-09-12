@@ -181,44 +181,39 @@ async function recordOrder(
   packageSize: string,
   amount: number,
   result: {
+    localId: string;
     checkoutId: string | null;
     merchantId: string | null;
   }
 ) {
-  try {
-    await runWithTimeout(
-      sql`
-        INSERT INTO orders
-        (
-          phone_number,
-          session_id,
-          package_size,
-          quantity,
-          unit_price,
-          total_amount,
-          status,
-          checkout_request_id,
-          merchant_request_id
-        )
-        VALUES
-        (
-          ${phone},
-          ${sessionId},
-          ${packageSize},
-          1,
-          ${amount},
-          ${amount},
-          'awaiting_payment',
-          ${result.checkoutId},
-          ${result.merchantId}
-        )
-      `,
-      1200
-    );
-
-  } catch (err) {
-    console.error("Could not record order:", err);
-  }
+  await sql`
+    INSERT INTO orders
+    (
+      phone_number,
+      session_id,
+      package_size,
+      quantity,
+      unit_price,
+      total_amount,
+      status,
+      local_id,
+      checkout_request_id,
+      merchant_request_id
+    )
+    VALUES
+    (
+      ${phone},
+      ${sessionId},
+      ${packageSize},
+      1,
+      ${amount},
+      ${amount},
+      'awaiting_payment',
+      ${result.localId},
+      ${result.checkoutId},
+      ${result.merchantId}
+    )
+  `;
 }
 // ---------------------------------------------------------------------------
 // POST - Onfon USSD endpoint
