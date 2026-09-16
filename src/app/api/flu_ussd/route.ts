@@ -579,4 +579,20 @@ export async function GET(req: NextRequest) {
       const simulatedReq = new NextRequest(req.url, {
         method: "POST",
         headers: req.headers,
-        bo
+        body: JSON.stringify(payloadFromUrl),
+      });
+      return await POST(simulatedReq);
+    }
+
+    // 2. THIS IS THE LINE: When you click the URL link in a browser, 
+    // it hits here and outputs the plain text string instantly.
+    return new NextResponse("Service operational", {
+      status: 200,
+      headers: { "Content-Type": "text/plain; charset=utf-8" }
+    });
+    
+  } catch (err) {
+    console.error("GET Forwarder routing crash:", err);
+    return new NextResponse("END Sorry, something went wrong.", { status: 200 });
+  }
+}
