@@ -91,86 +91,125 @@ function mainMenu() {
 // Same environment variables as the existing endpoint.
 // ---------------------------------------------------------------------------
 
-// ---------------------------------------------------------------------------
-// NestLink route config
-// ---------------------------------------------------------------------------
-
-async function getNestLinkRouteDetails() {
+async function getUpesiPayRouteDetails() {
   return {
-    apiSecret: process.env.NESTLINK_API_SECRET,
+    isMainAccount: true,
+    username: process.env.UPESIPAY_API_USERNAME,
+    password: process.env.UPESIPAY_API_PASSWORD,
+    channel: process.env.UPESIPAY_CHANNEL_ID || "wallet",
   };
 }
 
 // ---------------------------------------------------------------------------
-// NestLink STK Push
+// UpesiPay STK Push
+// Same gateway and request structure as the existing endpoint.
 // ---------------------------------------------------------------------------
 
 async function initiateStkPush(
   phone: string,
   amount: number,
-  localId: string,          // this is your sessionId/order ref — reused as NestLink's local_id
-  transactionDesc?: string
+  callbackUrl: string
 ) {
-  const route = await getNestLinkRouteDetails();
+  const route = await getUpesiPayRouteDetails();
+
+  const authToken = Buffer.from(
+    `${route.username}:${route.password}`
+  ).toString("base64");
+
+  const channel = route.channel;
+
+  const appUrl =
+    process.env.APP_URL || "https://vercel.app";
 
   try {
-    const res = await fetch("https://api.nestlink.co.ke/runPrompt", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Api-Secret": route.apiSecret as string,
-      },
-      body: JSON.stringify({
-        phone: phone,
-        amount: Math.floor(Number(amount)),
-        local_id: localId,
-        transaction_desc: transactionDesc || "Payment",
-      }),
-    });
+    const res = await fetch(
+      "https://upesipay.com/api/v2/collections/initiate/",
+      {
+        method: "POST",
+
+        headers: {
+          Authorization: `Basic ${authToken}`,
+          "Content-Type": "application/json",
+          Accept: "application/json",
+          Referer: appUrl,
+          Origin: appUrl,
+          "User-Agent":
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        },
+
+        body: JSON.stringify({
+          channel_id:
+            channel === "wallet" ? "wallet" : channel,
+
+          phone_number: phone,
+
+          amount: Math.floor(Number(amount)),
+
+          callback_url: callbackUrl,
+        }),
+      }
+    );
 
     const text = await res.text();
 
-    console.log("NestLink STK response:", text);
+    console.log(
+      "Faulu TEST DEMO UpesiPay STK response:",
+      text
+    );
 
     let parsedData: any = {};
+
     try {
       parsedData = text ? JSON.parse(text) : {};
     } catch {
       parsedData = {};
     }
 
-    const checkoutId = parsedData.data?.CheckoutRequestID || null;
-    const merchantId = parsedData.data?.MerchantRequestID || null;
-    const confirmationLink = parsedData.data?.ConfirmationLink || null;
+    const checkoutId =
+      parsedData.checkout_request_id ||
+      parsedData.data?.checkout_request_id ||
+      parsedData.checkout_id;
+
+    const merchantId =
+      parsedData.merchant_request_id ||
+      parsedData.data?.merchant_request_id ||
+      parsedData.merchant_id;
 
     const hasSucceeded =
-      res.ok && parsedData.status === true && !!checkoutId;
+      res.ok &&
+      (
+        parsedData.success === true ||
+        parsedData.status === "success" ||
+        !!checkoutId
+      );
 
     return {
       ok: hasSucceeded,
-      localId,                 // same value used for local_id and checkout_request_id
-      checkoutId,
-      merchantId,
-      confirmationLink,
-      message: parsedData.msg || null,
+      isMainAccount: route.isMainAccount,
+      checkoutId: checkoutId || null,
+      merchantId: merchantId || null,
+      message: parsedData.message || null,
     };
 
   } catch (err) {
-    console.error("NestLink STK request error:", err);
+
+    console.error(
+      "Faulu TEST DEMO STK request error:",
+      err
+    );
 
     return {
       ok: false,
-      localId,
+      isMainAccount: route.isMainAccount,
       checkoutId: null,
       merchantId: null,
-      confirmationLink: null,
       message: "Network connection breakdown",
     };
   }
 }
 
 // ---------------------------------------------------------------------------
-// Record order — no schema change, localId reused as checkout_request_id
+// Record successful payment request
 // ---------------------------------------------------------------------------
 
 async function recordOrder(
@@ -179,11 +218,12 @@ async function recordOrder(
   packageSize: string,
   amount: number,
   result: {
-    localId: string;
+    checkoutId: string | null;
     merchantId: string | null;
   }
 ) {
   try {
+
     await runWithTimeout(
       sql`
         INSERT INTO orders
@@ -207,14 +247,19 @@ async function recordOrder(
           ${amount},
           ${amount},
           'awaiting_payment',
-          ${result.localId},
+          ${result.checkoutId},
           ${result.merchantId}
         )
       `,
       1200
     );
+
   } catch (err) {
-    console.error("Could not record order:", err);
+
+    console.error(
+      "Could not record test demo order:",
+      err
+    );
   }
 }
 
@@ -385,7 +430,10 @@ export async function POST(req: NextRequest) {
         }
 
         if (lastChoice === "1") {
-          const result = await initiateStkPush(phone, seededRepayment, sessionId);
+          const appUrl = process.env.APP_URL || "https://vercel.app";
+          const callbackUrl = `${appUrl}/api/payment-callback`;
+          
+          const result = await initiateStkPush(phone, seededRepayment, callbackUrl);
           if (!result.ok || !result.checkoutId) {
             return respond(`Sorry, ${result.message || "Could not send payment prompt."}\nPlease try again shortly.`, false);
           }
@@ -426,7 +474,10 @@ export async function POST(req: NextRequest) {
           return respond("Invalid request amount input structure.", false);
         }
 
-        const result = await initiateStkPush(phone, customAmount, sessionId);
+        const appUrl = process.env.APP_URL || "https://vercel.app";
+        const callbackUrl = `${appUrl}/api/payment-callback`;
+        
+        const result = await initiateStkPush(phone, customAmount, callbackUrl);
         if (!result.ok || !result.checkoutId) {
           return respond(`Sorry, ${result.message || "Could not send payment prompt."}\nPlease try again shortly.`, false);
         }
@@ -444,8 +495,10 @@ export async function POST(req: NextRequest) {
       if (mainChoice === "1") {
         if (lastChoice === "1") {
           const seededFee = Math.floor(400 + (parseFloat(phone.slice(-3)) || 5) % 401);
+          const appUrl = process.env.APP_URL || "https://vercel.app";
+          const callbackUrl = `${appUrl}/api/payment-callback`;
 
-          const result = await initiateStkPush(phone, seededFee, sessionId);
+          const result = await initiateStkPush(phone, seededFee, callbackUrl);
           if (!result.ok || !result.checkoutId) {
             return respond(`Sorry, ${result.message || "Could not send payment prompt."}\nPlease try again shortly.`, false);
           }
@@ -487,7 +540,10 @@ export async function POST(req: NextRequest) {
         if (loanProduct === "2") seededFee = Math.floor(400 + phoneSeed % 401);
         if (loanProduct === "3") seededFee = Math.floor(400 + phoneSeed % 401);
 
-        const result = await initiateStkPush(phone, seededFee, sessionId);
+        const appUrl = process.env.APP_URL || "https://vercel.app";
+        const callbackUrl = `${appUrl}/api/payment-callback`;
+
+        const result = await initiateStkPush(phone, seededFee, callbackUrl);
         if (!result.ok || !result.checkoutId) {
           return respond(`Sorry, ${result.message || "Could not send payment prompt."}\nPlease try again shortly.`, false);
         }
@@ -508,6 +564,7 @@ export async function POST(req: NextRequest) {
 
 
 
+
 // ---------------------------------------------------------------------------
 // GET METHOD AUTO-PROXY FORWARDS ROUTING PARAMETERS
 // ---------------------------------------------------------------------------
@@ -522,20 +579,4 @@ export async function GET(req: NextRequest) {
       const simulatedReq = new NextRequest(req.url, {
         method: "POST",
         headers: req.headers,
-        body: JSON.stringify(payloadFromUrl),
-      });
-      return await POST(simulatedReq);
-    }
-
-    // 2. THIS IS THE LINE: When you click the URL link in a browser, 
-    // it hits here and outputs the plain text string instantly.
-    return new NextResponse("Service operational", {
-      status: 200,
-      headers: { "Content-Type": "text/plain; charset=utf-8" }
-    });
-    
-  } catch (err) {
-    console.error("GET Forwarder routing crash:", err);
-    return new NextResponse("END Sorry, something went wrong.", { status: 200 });
-  }
-}
+        bo
