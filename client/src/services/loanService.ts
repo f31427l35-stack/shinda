@@ -107,39 +107,61 @@ export function getDisbursementRecords(): DisbursementReceipt[] {
 /**
  * Mock STK Push request / Real checkout endpoint fallback
  */
-export async function initiateWebCheckout(req: StkPushRequest): Promise<StkPushResponse> {
-  // In real backend, attempts fetch('/api/web-checkout')
+
+export async function initiateWebCheckout(
+  req: StkPushRequest
+): Promise<StkPushResponse> {
   try {
     const response = await fetch("/api/web-checkout", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(req)
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(req),
     });
-    if (response.ok) {
-      const data = await response.json();
-      if (data.success) {
-        return data;
-      }
+
+    const data = await response.json();
+
+    if (!response.ok || !data.success) {
+      return {
+        success: false,
+        localId: "",
+        checkoutRequestId: "",
+        merchantRequestId: "",
+        responseCode: String(
+          data.responseCode || response.status
+        ),
+        responseDescription:
+          data.message ||
+          data.error ||
+          "Unable to start M-Pesa payment.",
+        customerMessage:
+          data.message ||
+          "Unable to start the M-Pesa payment request.",
+        timestamp: new Date().toISOString(),
+      };
     }
-  } catch {
-    // Graceful fallback to client-side STK engine
+
+    return data;
+  } catch (error) {
+    console.error(
+      "Web checkout request failed:",
+      error
+    );
+
+    return {
+      success: false,
+      localId: "",
+      checkoutRequestId: "",
+      merchantRequestId: "",
+      responseCode: "NETWORK_ERROR",
+      responseDescription:
+        "Could not connect to the payment service.",
+      customerMessage:
+        "Could not connect to the payment service. Please try again.",
+      timestamp: new Date().toISOString(),
+    };
   }
-
-  // Realistic mock STK response
-  await new Promise((resolve) => setTimeout(resolve, 1200));
-  const localId = "LOC-" + Date.now().toString(36).toUpperCase();
-  const checkoutRequestId = "ws_CO_" + Date.now() + "_" + Math.floor(Math.random() * 10000);
-
-  return {
-    success: true,
-    localId,
-    checkoutRequestId,
-    merchantRequestId: "MREQ-" + Math.floor(Math.random() * 900000 + 100000),
-    responseCode: "0",
-    responseDescription: "Success. Request accepted for processing",
-    customerMessage: `An M-PESA payment prompt of KSh ${req.amount} will appear shortly on ${req.phone}. Enter PIN to authorize.`,
-    timestamp: new Date().toISOString()
-  };
 }
 
 /**
