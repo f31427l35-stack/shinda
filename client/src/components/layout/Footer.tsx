@@ -77,29 +77,7 @@ export const Footer: React.FC = () => {
             </ul>
           </div>
 
-          {/* Contact & Security */}
-          <div className="space-y-3 text-xs">
-            <span className="font-bold text-foreground tracking-wider uppercase block text-xs">
-              Contact & Support
-            </span>
-            <div className="space-y-2 text-muted-foreground font-medium">
-              <div className="flex items-center gap-2">
-                <PhoneCall className="w-3.5 h-3.5 text-primary" />
-                <span>+254 711 074 000 / 020 387 7290</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <Mail className="w-3.5 h-3.5 text-primary" />
-                <span>info@faulukenya.com</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <MapPin className="w-3.5 h-3.5 text-primary" />
-                <span>Faulu Complex, Ngong Lane, Nairobi</span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Bottom Bar */}
+          {/* Bottom Bar */}
         <div className="pt-6 border-t border-border flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-muted-foreground font-medium">
           <p>© {new Date().getFullYear()} Faulu Microfinance Bank Ltd. All rights reserved.</p>
           <div className="flex items-center gap-4 text-[11px]">
