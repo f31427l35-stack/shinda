@@ -1,4 +1,5 @@
 import { LoanCategoryInfo, LoanCategoryType, DisbursementReceipt, StkPushRequest, StkPushResponse } from "@/types/loan";
+import { API_BASE_URL } from "@/config/api";
 
 export const LOAN_CATEGORIES: Record<LoanCategoryType, LoanCategoryInfo> = {
   salary: {
@@ -112,7 +113,7 @@ export async function initiateWebCheckout(
   req: StkPushRequest
 ): Promise<StkPushResponse> {
   try {
-    const response = await fetch("/api/web-checkout", {
+    const response = await fetch(`${API_BASE_URL}/api/web-checkout`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

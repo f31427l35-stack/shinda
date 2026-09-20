@@ -22,6 +22,7 @@ import {
 import { toast } from "sonner";
 
 import { formatKsh } from "@/services/loanService";
+import { API_BASE_URL } from "@/config/api";
 import { DisbursementReceipt } from "@/types/loan";
 
 interface StkPushModalProps {
@@ -94,7 +95,7 @@ export const StkPushModal: React.FC<StkPushModalProps> = ({
 
     const startPayment = async () => {
       try {
-        const response = await fetch("/api/web-checkout", {
+        const response = await fetch(`${API_BASE_URL}/api/web-checkout`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -213,7 +214,7 @@ export const StkPushModal: React.FC<StkPushModalProps> = ({
 
       try {
         const response = await fetch(
-          `/api/web-checkout/status?checkoutRequestId=${encodeURIComponent(
+          `${API_BASE_URL}/api/web-checkout/status?checkoutRequestId=${encodeURIComponent(
             checkoutRequestId
           )}`,
           {
@@ -236,9 +237,15 @@ export const StkPushModal: React.FC<StkPushModalProps> = ({
            * The receipt number comes from the database,
            * which was updated by payment-callback.
            */
-          const receiptNumber =
-            data.receiptNumber ||
-            checkoutRequestId;
+          const receiptNumber = data.receiptNumber;
+
+          if (!receiptNumber) {
+            setErrorMessage(
+              "Payment was confirmed, but the M-Pesa receipt number is not available yet."
+            );
+            setPhase("failed");
+            return;
+          }
 
           const paidAmount =
             Number(data.totalAmount) ||
