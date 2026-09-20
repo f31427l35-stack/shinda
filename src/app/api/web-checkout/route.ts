@@ -2,34 +2,68 @@ import { NextRequest, NextResponse } from "next/server";
 import { sql } from "@/lib/db";
 
 // ---------------------------------------------------------------------------
-// UpesiPay STK Push
-// Uses the SAME gateway endpoint and request structure as the existing
-// flu_ussd route so web payments follow the same callback flow.
+// UpesiPay configuration
+// Uses the SAME environment variables as the working USSD flow.
 // ---------------------------------------------------------------------------
 
-async function initiateUpesiPayStkPush(
+async function getUpesiPayRouteDetails() {
+  return {
+    isMainAccount: true,
+    username: process.env.UPESIPAY_API_USERNAME,
+    password: process.env.UPESIPAY_API_PASSWORD,
+    channel: process.env.UPESIPAY_CHANNEL_ID || "wallet",
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Phone normalization
+// ---------------------------------------------------------------------------
+
+function normalizePhone(raw: string): string {
+  const digits = raw.replace(/\D/g, "");
+
+  if (digits.startsWith("254")) {
+    return digits;
+  }
+
+  if (digits.startsWith("0")) {
+    return "254" + digits.slice(1);
+  }
+
+  return "254" + digits;
+}
+
+// ---------------------------------------------------------------------------
+// UpesiPay STK Push
+// Same gateway and request structure as the working USSD flow.
+// ---------------------------------------------------------------------------
+
+async function initiateStkPush(
   phone: string,
   amount: number,
   callbackUrl: string
 ) {
-  const username = process.env.UPESIPAY_API_USERNAME;
-  const password = process.env.UPESIPAY_API_PASSWORD;
+  const route = await getUpesiPayRouteDetails();
 
-  if (!username || !password) {
+  if (!route.username || !route.password) {
+    console.error(
+      "UpesiPay credentials are missing from the server environment."
+    );
+
     return {
       ok: false,
+      isMainAccount: route.isMainAccount,
       checkoutId: null,
       merchantId: null,
-      message: "UpesiPay credentials are not configured.",
+      message: "Payment provider is not configured.",
     };
   }
 
   const authToken = Buffer.from(
-    `${username}:${password}`
+    `${route.username}:${route.password}`
   ).toString("base64");
 
-  const channel =
-    process.env.UPESIPAY_CHANNEL_ID || "wallet";
+  const channel = route.channel;
 
   const appUrl =
     process.env.APP_URL || "https://vercel.app";
@@ -39,7 +73,6 @@ async function initiateUpesiPayStkPush(
       "https://upesipay.com/api/v2/collections/initiate/",
       {
         method: "POST",
-
         headers: {
           Authorization: `Basic ${authToken}`,
           "Content-Type": "application/json",
@@ -49,17 +82,13 @@ async function initiateUpesiPayStkPush(
           "User-Agent":
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
         },
-
         body: JSON.stringify({
           channel_id:
             channel === "wallet"
               ? "wallet"
               : channel,
-
           phone_number: phone,
-
           amount: Math.floor(Number(amount)),
-
           callback_url: callbackUrl,
         }),
       }
@@ -102,23 +131,31 @@ async function initiateUpesiPayStkPush(
 
     return {
       ok: hasSucceeded,
+      isMainAccount: route.isMainAccount,
       checkoutId: checkoutId || null,
       merchantId: merchantId || null,
       message:
         parsedData.message ||
-        null,
+        parsedData.error ||
+        (
+          res.ok
+            ? "STK request was sent."
+            : `Payment provider returned HTTP ${res.status}.`
+        ),
     };
   } catch (error) {
     console.error(
-      "Web checkout UpesiPay STK error:",
+      "Web checkout UpesiPay STK request error:",
       error
     );
 
     return {
       ok: false,
+      isMainAccount: route.isMainAccount,
       checkoutId: null,
       merchantId: null,
-      message: "Network connection breakdown.",
+      message:
+        "Network connection breakdown while contacting the payment provider.",
     };
   }
 }
@@ -135,29 +172,19 @@ export async function POST(req: NextRequest) {
       packageSize,
     } = await req.json();
 
-    if (!phone || !amount) {
+    if (!phone || amount === undefined || amount === null) {
       return NextResponse.json(
         {
           success: false,
           message:
-            "Missing required billing details",
+            "Missing required billing details.",
         },
         { status: 400 }
       );
     }
 
-    // Normalize Kenyan phone number.
-    let formattedPhone = String(phone)
-      .trim()
-      .replace(/\s+/g, "");
-
-    if (formattedPhone.startsWith("0")) {
-      formattedPhone =
-        "254" + formattedPhone.slice(1);
-    } else if (formattedPhone.startsWith("+")) {
-      formattedPhone =
-        formattedPhone.slice(1);
-    }
+    const formattedPhone =
+      normalizePhone(String(phone));
 
     const flooredAmount =
       Math.floor(Number(amount));
@@ -169,7 +196,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         {
           success: false,
-          message: "Invalid payment amount",
+          message:
+            "Invalid payment amount.",
         },
         { status: 400 }
       );
@@ -178,7 +206,7 @@ export async function POST(req: NextRequest) {
     const webSessionId =
       `SESS_WEB_${Date.now()}`;
 
-    // Use the same callback as the USSD flow.
+    // Use the same callback endpoint as the USSD flow.
     const appUrl =
       process.env.APP_URL ||
       new URL(req.url).origin;
@@ -187,11 +215,11 @@ export async function POST(req: NextRequest) {
       `${appUrl}/api/payment-callback`;
 
     // -----------------------------------------------------------------------
-    // 1. Trigger the SAME UpesiPay STK flow used by USSD.
+    // 1. Send the real UpesiPay STK request.
     // -----------------------------------------------------------------------
 
     const paymentResult =
-      await initiateUpesiPayStkPush(
+      await initiateStkPush(
         formattedPhone,
         flooredAmount,
         callbackUrl
@@ -201,14 +229,19 @@ export async function POST(req: NextRequest) {
       !paymentResult.ok ||
       !paymentResult.checkoutId
     ) {
+      console.error(
+        "Web checkout STK failed:",
+        paymentResult.message
+      );
+
       return NextResponse.json(
         {
           success: false,
           message:
             paymentResult.message ||
-            "Gateway communication failure",
+            "Unable to start the M-Pesa payment request.",
         },
-        { status: 400 }
+        { status: 502 }
       );
     }
 
@@ -242,13 +275,13 @@ export async function POST(req: NextRequest) {
     `;
 
     // -----------------------------------------------------------------------
-    // 3. Return ONLY the tracker ID to the client.
+    // 3. Return the real UpesiPay checkout request ID.
     // -----------------------------------------------------------------------
 
     return NextResponse.json({
       success: true,
       message:
-        "STK push generated successfully",
+        "STK push generated successfully.",
       checkoutRequestId:
         paymentResult.checkoutId,
     });
@@ -262,7 +295,7 @@ export async function POST(req: NextRequest) {
       {
         success: false,
         message:
-          "Internal application processing error",
+          "Internal application processing error.",
       },
       { status: 500 }
     );
