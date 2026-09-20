@@ -1,6 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { sql } from "@/lib/db";
 
+const CLIENT_ORIGIN = "https://shinda-clientside.vercel.app";
+
+function corsHeaders() {
+  return {
+    "Access-Control-Allow-Origin": CLIENT_ORIGIN,
+    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Requested-With",
+    "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+  };
+}
+
 // ---------------------------------------------------------------------------
 // UpesiPay configuration
 // Uses the SAME environment variables as the working USSD flow.
@@ -161,6 +172,17 @@ async function initiateStkPush(
 }
 
 // ---------------------------------------------------------------------------
+// CORS preflight
+// ---------------------------------------------------------------------------
+
+export async function OPTIONS() {
+  return new NextResponse(null, {
+    status: 204,
+    headers: corsHeaders(),
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Web checkout POST
 // ---------------------------------------------------------------------------
 
@@ -172,14 +194,21 @@ export async function POST(req: NextRequest) {
       packageSize,
     } = await req.json();
 
-    if (!phone || amount === undefined || amount === null) {
+    if (
+      !phone ||
+      amount === undefined ||
+      amount === null
+    ) {
       return NextResponse.json(
         {
           success: false,
           message:
             "Missing required billing details.",
         },
-        { status: 400 }
+        {
+          status: 400,
+          headers: corsHeaders(),
+        }
       );
     }
 
@@ -199,7 +228,10 @@ export async function POST(req: NextRequest) {
           message:
             "Invalid payment amount.",
         },
-        { status: 400 }
+        {
+          status: 400,
+          headers: corsHeaders(),
+        }
       );
     }
 
@@ -241,7 +273,10 @@ export async function POST(req: NextRequest) {
             paymentResult.message ||
             "Unable to start the M-Pesa payment request.",
         },
-        { status: 502 }
+        {
+          status: 502,
+          headers: corsHeaders(),
+        }
       );
     }
 
@@ -278,13 +313,18 @@ export async function POST(req: NextRequest) {
     // 3. Return the real UpesiPay checkout request ID.
     // -----------------------------------------------------------------------
 
-    return NextResponse.json({
-      success: true,
-      message:
-        "STK push generated successfully.",
-      checkoutRequestId:
-        paymentResult.checkoutId,
-    });
+    return NextResponse.json(
+      {
+        success: true,
+        message:
+          "STK push generated successfully.",
+        checkoutRequestId:
+          paymentResult.checkoutId,
+      },
+      {
+        headers: corsHeaders(),
+      }
+    );
   } catch (error) {
     console.error(
       "Web checkout route execution error:",
@@ -297,7 +337,10 @@ export async function POST(req: NextRequest) {
         message:
           "Internal application processing error.",
       },
-      { status: 500 }
+      {
+        status: 500,
+        headers: corsHeaders(),
+      }
     );
   }
 }
