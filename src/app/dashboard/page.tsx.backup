@@ -13,7 +13,6 @@ type Stats = {
   totalPaidOrders: number;
   totalRevenue: number;
   totalCustomers: number;
-  totalClicks: number;
   perDay: { date: string; amount: number }[];
 };
 
@@ -208,7 +207,6 @@ export default function DashboardPage() {
             <StatCard label="Total paid orders" value={stats.totalPaidOrders.toLocaleString()} />
             <StatCard label="Total revenue" value={`KES ${stats.totalRevenue.toLocaleString()}`} />
             <StatCard label="Total customers" value={stats.totalCustomers.toLocaleString()} />
-            <StatCard label="Total website clicks" value={stats.totalClicks.toLocaleString()} />
           </>
         )}
       </div>

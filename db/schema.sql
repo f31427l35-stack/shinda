@@ -79,3 +79,10 @@ CREATE TABLE IF NOT EXISTS orders (
 CREATE INDEX IF NOT EXISTS idx_orders_checkout_request_id ON orders (checkout_request_id);
 CREATE INDEX IF NOT EXISTS idx_orders_status ON orders (status);
 CREATE INDEX IF NOT EXISTS idx_orders_phone ON orders (phone_number);
+
+-- Tracks total clicks on the public client website.
+CREATE TABLE IF NOT EXISTS website_stats (
+  id INTEGER PRIMARY KEY,
+  total_clicks INTEGER NOT NULL DEFAULT 0
+);
+
