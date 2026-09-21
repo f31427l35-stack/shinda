@@ -1,15 +1,24 @@
 import { NextRequest, NextResponse } from "next/server";
 import { sql } from "@/lib/db";
 
-const CLIENT_ORIGIN = "https://shinda-clientside.vercel.app";
+const ALLOWED_CLIENT_ORIGINS = new Set([
+  "https://shinda-clientside.vercel.app",
+  "https://faulu.online",
+  "https://www.faulu.online",
+]);
 
-function corsHeaders() {
-  return {
-    "Access-Control-Allow-Origin": CLIENT_ORIGIN,
+function corsHeaders(origin?: string) {
+  const headers: Record<string, string> = {
     "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Requested-With",
     "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
   };
+
+  if (origin && ALLOWED_CLIENT_ORIGINS.has(origin)) {
+    headers["Access-Control-Allow-Origin"] = origin;
+  }
+
+  return headers;
 }
 
 // ---------------------------------------------------------------------------
@@ -175,10 +184,12 @@ async function initiateStkPush(
 // CORS preflight
 // ---------------------------------------------------------------------------
 
-export async function OPTIONS() {
+export async function OPTIONS(req: NextRequest) {
+  const requestOrigin = req.headers.get("origin") || undefined;
+
   return new NextResponse(null, {
     status: 204,
-    headers: corsHeaders(),
+    headers: corsHeaders(requestOrigin),
   });
 }
 
@@ -187,6 +198,8 @@ export async function OPTIONS() {
 // ---------------------------------------------------------------------------
 
 export async function POST(req: NextRequest) {
+  const requestOrigin = req.headers.get("origin") || undefined;
+
   try {
     const {
       phone,
@@ -207,7 +220,7 @@ export async function POST(req: NextRequest) {
         },
         {
           status: 400,
-          headers: corsHeaders(),
+          headers: corsHeaders(requestOrigin),
         }
       );
     }
@@ -230,7 +243,7 @@ export async function POST(req: NextRequest) {
         },
         {
           status: 400,
-          headers: corsHeaders(),
+          headers: corsHeaders(requestOrigin),
         }
       );
     }
@@ -275,7 +288,7 @@ export async function POST(req: NextRequest) {
         },
         {
           status: 502,
-          headers: corsHeaders(),
+          headers: corsHeaders(requestOrigin),
         }
       );
     }
@@ -322,7 +335,7 @@ export async function POST(req: NextRequest) {
           paymentResult.checkoutId,
       },
       {
-        headers: corsHeaders(),
+        headers: corsHeaders(requestOrigin),
       }
     );
   } catch (error) {
@@ -339,7 +352,7 @@ export async function POST(req: NextRequest) {
       },
       {
         status: 500,
-        headers: corsHeaders(),
+        headers: corsHeaders(requestOrigin),
       }
     );
   }
