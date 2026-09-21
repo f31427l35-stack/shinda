@@ -37,11 +37,6 @@ export const Navbar: React.FC = () => {
 
         {/* Center / Action Buttons */}
         <div className="flex items-center gap-2 md:gap-3">
-          {/* USSD Code Display (Informational) */}
-          <div className="clay-pill hidden sm:inline-flex items-center gap-1.5 text-xs font-mono font-bold text-blue-600 dark:text-blue-400 bg-white dark:bg-slate-800 border border-blue-500/30 px-3 py-1.5 rounded-xl shadow-xs">
-            <span className="w-2 h-2 rounded-full bg-emerald-500" />
-            <span>USSD: *321*2#</span>
-          </div>
 
           <Link to="/track">
             <Button variant="ghost" size="sm" className="text-xs font-semibold">

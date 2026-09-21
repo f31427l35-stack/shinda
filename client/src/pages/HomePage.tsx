@@ -48,13 +48,13 @@ export default function HomePage() {
             </h1>
 
             <p className="text-sm md:text-base text-muted-foreground leading-relaxed max-w-2xl mx-auto font-medium">
-              Check your eligibility in seconds. Access up to <strong className="text-foreground font-bold">KSh 38,500</strong> with automated M-Pesa release, CRB 504 risk protection underwritten by Britam, or dial USSD code <strong className="text-blue-600 font-mono font-bold">*321*2#</strong> on any mobile phone.
+              Check your eligibility in seconds. Access up to <strong className="text-foreground font-bold">KSh 38,500</strong> with automated M-Pesa release, CRB 504 risk protection underwritten by Britam, or use our secure online portal from any smartphone or computer.
             </p>
 
             <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
               <div className="clay-pill px-4 py-2 rounded-2xl text-xs font-mono font-bold text-blue-600 dark:text-blue-400 bg-white dark:bg-slate-800 border border-blue-500/40 flex items-center gap-2">
                 <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                <span>Feature Phones: Dial *321*2#</span>
+                <span>Web Portal: Apply Online</span>
               </div>
               <Link to="/track">
                 <Button variant="ghost" size="sm" className="text-xs font-semibold">
@@ -130,10 +130,10 @@ export default function HomePage() {
               <Smartphone className="w-6 h-6" />
             </div>
             <h3 className="font-bold text-base text-foreground">
-              USSD *321*2# & Web
+              Secure Online Access
             </h3>
             <p className="text-xs text-muted-foreground leading-relaxed">
-              Seamless access on feature phones via *321*2# or through our responsive modern web portal.
+              Apply securely through our responsive modern web portal with a simple digital application process.
             </p>
           </div>
         </div>
@@ -166,14 +166,6 @@ export default function HomePage() {
             </AccordionContent>
           </AccordionItem>
 
-          <AccordionItem value="item-2" className="glass-panel rounded-2xl px-5 border-none shadow-sm">
-            <AccordionTrigger className="text-sm font-bold text-foreground py-4 hover:no-underline">
-              How do I use the USSD code on my mobile phone?
-            </AccordionTrigger>
-            <AccordionContent className="text-xs text-muted-foreground leading-relaxed pb-4">
-              Simply dial <strong className="text-blue-600 font-mono font-bold">*321*2#</strong> on your Safaricom or Airtel line. Enter your Kenyan National ID, select option 1 (Fast Loan), 2 (Categories), or 3 (Repay), and follow the on-screen prompts.
-            </AccordionContent>
-          </AccordionItem>
 
           <AccordionItem value="item-3" className="glass-panel rounded-2xl px-5 border-none shadow-sm">
             <AccordionTrigger className="text-sm font-bold text-foreground py-4 hover:no-underline">

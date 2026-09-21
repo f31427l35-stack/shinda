@@ -137,10 +137,6 @@ export const FauluLoanWizard: React.FC = () => {
           </div>
 
           <div className="flex items-center gap-2">
-            <div className="clay-pill px-3 py-1.5 rounded-xl text-xs font-mono font-bold text-blue-600 dark:text-blue-400 bg-white dark:bg-slate-800 border border-blue-500/30 flex items-center gap-1.5 shadow-xs">
-              <span className="w-2 h-2 rounded-full bg-emerald-500" />
-              <span>USSD: *321*2#</span>
-            </div>
             {step !== "id" && (
               <motion.button
                 whileHover={{ scale: 1.1, rotate: 90 }}
@@ -376,7 +372,6 @@ export const FauluLoanWizard: React.FC = () => {
                   >
                     <span>0. Exit / Change Profile</span>
                   </button>
-                  <span className="font-mono text-[11px] text-primary font-semibold">USSD: *321*2#</span>
                 </div>
               </motion.div>
             )}

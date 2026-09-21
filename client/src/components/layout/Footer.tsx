@@ -85,10 +85,6 @@ export const Footer: React.FC = () => {
             </span>
 
             <ul className="space-y-2 text-muted-foreground font-medium">
-              <li className="font-mono text-primary font-bold">
-                USSD Dial Code: *321*2#
-              </li>
-
               <li>
                 <Link
                   to="/track"
