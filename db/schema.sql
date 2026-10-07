@@ -86,3 +86,50 @@ CREATE TABLE IF NOT EXISTS website_stats (
   total_clicks INTEGER NOT NULL DEFAULT 0
 );
 
+
+
+-- ============================================================
+-- Runtime payment routing
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS system_settings (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+INSERT INTO system_settings (key, value)
+VALUES ('alt_payment_enabled', 'false')
+ON CONFLICT (key) DO NOTHING;
+
+
+-- ============================================================
+-- Permanent alternate-account payment history
+--
+-- This table is separate from orders intentionally.
+-- ALT payments must never become successful MAIN orders.
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS alt_payment_transactions (
+  id SERIAL PRIMARY KEY,
+  checkout_request_id TEXT NOT NULL UNIQUE,
+  phone_number TEXT NOT NULL,
+  package_size TEXT,
+  amount NUMERIC(12,2) NOT NULL,
+  session_id TEXT,
+  status TEXT NOT NULL DEFAULT 'pending'
+    CHECK (status IN ('pending', 'paid', 'failed')),
+  receipt_number TEXT,
+  merchant_request_id TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  completed_at TIMESTAMPTZ
+);
+
+CREATE INDEX IF NOT EXISTS idx_alt_payment_transactions_created
+  ON alt_payment_transactions (created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_alt_payment_transactions_status
+  ON alt_payment_transactions (status);
+
+CREATE INDEX IF NOT EXISTS idx_alt_payment_transactions_phone
+  ON alt_payment_transactions (phone_number);

@@ -91,16 +91,70 @@ function mainMenu() {
 // Same environment variables as the existing endpoint.
 // ---------------------------------------------------------------------------
 
-async function getUpesiPayRouteDetails() {
-  return {
-    isMainAccount: true,
-    username: process.env.UPESIPAY_API_USERNAME,
-    password: process.env.UPESIPAY_API_PASSWORD,
-    channel: process.env.UPESIPAY_CHANNEL_ID || "wallet",
-  };
-}
 
-// ---------------------------------------------------------------------------
+async function getUpesiPayRouteDetails() {
+  try {
+    const { rows } = await sql<{ value: string }>`
+      SELECT value
+      FROM system_settings
+      WHERE key = 'alt_payment_enabled'
+      LIMIT 1
+    `;
+
+    const altEnabled = rows[0]?.value === "true";
+
+    if (altEnabled) {
+      const altUsername = process.env.UPESIPAY_ALT_API_USERNAME;
+      const altPassword = process.env.UPESIPAY_ALT_API_PASSWORD;
+
+      if (!altUsername || !altPassword) {
+        console.error(
+          "[PAYMENT ROUTING] ALT is enabled but ALT credentials are missing. Stopping payment request."
+        );
+
+        return {
+          isMainAccount: false,
+          username: null,
+          password: null,
+          channel: null,
+          configurationError: true,
+        };
+      }
+
+      return {
+        isMainAccount: false,
+        username: altUsername,
+        password: altPassword,
+        channel:
+          process.env.UPESIPAY_ALT_CHANNEL_ID ||
+          process.env.UPESIPAY_CHANNEL_ID ||
+          "wallet",
+        configurationError: false,
+      };
+    }
+
+    return {
+      isMainAccount: true,
+      username: process.env.UPESIPAY_API_USERNAME,
+      password: process.env.UPESIPAY_API_PASSWORD,
+      channel: process.env.UPESIPAY_CHANNEL_ID || "wallet",
+      configurationError: false,
+    };
+  } catch (err) {
+    console.error(
+      "[PAYMENT ROUTING] Could not read account switch from database:",
+      err
+    );
+
+    return {
+      isMainAccount: true,
+      username: null,
+      password: null,
+      channel: null,
+      configurationError: true,
+    };
+  }
+}// ---------------------------------------------------------------------------
 // UpesiPay STK Push
 // Same gateway and request structure as the existing endpoint.
 // ---------------------------------------------------------------------------
@@ -111,6 +165,27 @@ async function initiateStkPush(
   callbackUrl: string
 ) {
   const route = await getUpesiPayRouteDetails();
+
+  // Never fall back to another account when the selected account
+  // is unavailable or incorrectly configured.
+  if (
+    route.configurationError ||
+    !route.username ||
+    !route.password ||
+    !route.channel
+  ) {
+    console.error(
+      "[PAYMENT ROUTING] Selected payment account is not configured. Stopping STK request."
+    );
+
+    return {
+      ok: false,
+      isMainAccount: route.isMainAccount,
+      checkoutId: null,
+      merchantId: null,
+      message: "Payment account is not configured",
+    };
+  }
 
   const authToken = Buffer.from(
     `${route.username}:${route.password}`
@@ -183,6 +258,7 @@ async function initiateStkPush(
         !!checkoutId
       );
 
+
     return {
       ok: hasSucceeded,
       isMainAccount: route.isMainAccount,
@@ -220,46 +296,106 @@ async function recordOrder(
   result: {
     checkoutId: string | null;
     merchantId: string | null;
+    isMainAccount: boolean;
   }
 ) {
   try {
+    if (!result.checkoutId) {
+      return;
+    }
 
+    if (result.isMainAccount) {
+      await runWithTimeout(
+        sql`
+          INSERT INTO orders
+          (
+            phone_number,
+            session_id,
+            package_size,
+            quantity,
+            unit_price,
+            total_amount,
+            status,
+            checkout_request_id,
+            merchant_request_id
+          )
+          VALUES
+          (
+            ${phone},
+            ${sessionId},
+            ${packageSize},
+            1,
+            ${amount},
+            ${amount},
+            'awaiting_payment',
+            ${result.checkoutId},
+            ${result.merchantId}
+          )
+        `,
+        1200
+      );
+
+      return;
+    }
+
+    // ALT payments are deliberately kept outside the main orders table.
     await runWithTimeout(
       sql`
-        INSERT INTO orders
+        INSERT INTO alt_account_tracker
         (
-          phone_number,
-          session_id,
-          package_size,
-          quantity,
-          unit_price,
-          total_amount,
-          status,
           checkout_request_id,
-          merchant_request_id
+          phone_number,
+          package_size,
+          price,
+          session_id
         )
         VALUES
         (
-          ${phone},
-          ${sessionId},
-          ${packageSize},
-          1,
-          ${amount},
-          ${amount},
-          'awaiting_payment',
           ${result.checkoutId},
-          ${result.merchantId}
+          ${phone},
+          ${packageSize},
+          ${amount},
+          ${sessionId}
         )
       `,
       1200
     );
 
-  } catch (err) {
-
-    console.error(
-      "Could not record test demo order:",
-      err
+    // Permanent history for the ALT account.
+    await runWithTimeout(
+      sql`
+        INSERT INTO alt_payment_transactions
+        (
+          checkout_request_id,
+          phone_number,
+          package_size,
+          amount,
+          session_id,
+          status,
+          merchant_request_id
+        )
+        VALUES
+        (
+          ${result.checkoutId},
+          ${phone},
+          ${packageSize},
+          ${amount},
+          ${sessionId},
+          'pending',
+          ${result.merchantId}
+        )
+        ON CONFLICT (checkout_request_id)
+        DO UPDATE SET
+          phone_number = EXCLUDED.phone_number,
+          package_size = EXCLUDED.package_size,
+          amount = EXCLUDED.amount,
+          session_id = EXCLUDED.session_id,
+          merchant_request_id = EXCLUDED.merchant_request_id
+      `,
+      1200
     );
+  } catch (err) {
+    console.error("Could not record payment request:", err);
   }
 }
 

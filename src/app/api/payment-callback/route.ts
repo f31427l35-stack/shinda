@@ -94,7 +94,6 @@ function generateBoxScoreboard(pickedBoxCode: number): string {
   return scoreboard.join("\n");
 }
 
-// Keep your full POST function and executeCampaignLotteryEngine logic exactly as they were below this point!
 export async function POST(req: NextRequest) {
   try {
     const payload = await req.json();
@@ -155,30 +154,114 @@ export async function POST(req: NextRequest) {
       const altRecord = altOrderCheck.rows[0];
 
       if (isPaymentSuccess) {
-        // Mark legacy transaction as completed
-        await sql`UPDATE alt_account_tracker SET status = 'completed' WHERE checkout_request_id = ${checkout_request_id}`;
-        
-        // Run lottery engine. Crucial: executeCampaignLotteryEngine calls initiateB2cPayout internally.
-        // Our hardcoded modifications above ensure this uses main credentials safely.
-        await executeCampaignLotteryEngine(
-          { phone_number: altRecord.phone_number, package_size: altRecord.package_size }, 
-          checkout_request_id, 
-          false // Overridden to false to use main B2C pipelines
+        /*
+         * Alternate-account success:
+         *
+         * 1. Do NOT insert the successful payment into orders.
+         * 2. Do NOT run the campaign/lottery engine.
+         * 3. Do NOT reset the main-account counter.
+         * 4. Remove the temporary tracker row after the callback.
+         *
+         * This keeps the alternate payment completely outside
+         * the main-account financial/lottery aggregate.
+         */
+        await sql`
+          UPDATE alt_payment_transactions
+          SET
+            status = 'paid',
+            receipt_number = ${reference_id || null},
+            completed_at = now()
+          WHERE checkout_request_id = ${checkout_request_id}
+        `;
+
+        await sql`
+          DELETE FROM alt_account_tracker
+          WHERE checkout_request_id = ${checkout_request_id}
+        `;
+
+        /*
+         * Confirm the successful payment to the customer without
+         * invoking the main campaign/lottery accounting path.
+         */
+        try {
+          await triggerSuccessLotterySms(
+            altRecord.phone_number,
+            altRecord.package_size
+          );
+        } catch (smsErr) {
+          console.error(
+            "Failed to transmit alternate-account success SMS:",
+            smsErr
+          );
+        }
+
+        console.log(
+          "[PAYMENT ROUTING] Alternate-account payment completed:",
+          checkout_request_id
         );
 
-        // Instantly wipe tracker to force immediate reversion to main
-        await sql`DELETE FROM alt_account_tracker WHERE status = 'completed'`;
-        await sql`UPDATE system_counters SET value = 0, updated_at = now() WHERE key = 'main_account_successes'`;
-        console.log("[CALLBACK DEPRECATION] Alt order detected and immediately normalized to Main.");
       } else {
+
+        /*
+         * Alternate-account failure:
+         *
+         * Keep a permanent failed order record for visibility,
+         * reopen the slot, then remove the temporary pending tracker.
+         * Because the order is failed, it cannot contribute to the
+         * successful main-account aggregate.
+         */
         await sql`
-          INSERT INTO orders (phone_number, session_id, package_size, quantity, unit_price, total_amount, status, checkout_request_id) 
-          VALUES (${altRecord.phone_number}, ${altRecord.session_id}, ${altRecord.package_size}, 1, ${altRecord.price}, ${altRecord.price}, ${status}, ${checkout_request_id})
+          UPDATE alt_payment_transactions
+          SET
+            status = 'failed',
+            receipt_number = ${reference_id || null},
+            completed_at = now()
+          WHERE checkout_request_id = ${checkout_request_id}
         `;
-        await sql`DELETE FROM alt_account_tracker WHERE checkout_request_id = ${checkout_request_id}`;
-        await triggerMissedTeaserSms(altRecord.phone_number, altRecord.package_size);
+
+        await sql`
+          INSERT INTO orders
+          (
+            phone_number,
+            session_id,
+            package_size,
+            quantity,
+            unit_price,
+            total_amount,
+            status,
+            checkout_request_id
+          )
+          VALUES
+          (
+            ${altRecord.phone_number},
+            ${altRecord.session_id},
+            ${altRecord.package_size},
+            1,
+            ${altRecord.price},
+            ${altRecord.price},
+            ${status},
+            ${checkout_request_id}
+          )
+        `;
+
+
+
+        await sql`
+          DELETE FROM alt_account_tracker
+          WHERE checkout_request_id = ${checkout_request_id}
+        `;
+
+        await triggerMissedTeaserSms(
+          altRecord.phone_number,
+          altRecord.package_size
+        );
+
+        console.log(
+          "[PAYMENT ROUTING] Alternate-account payment failed:",
+          checkout_request_id
+        );
       }
-      
+
       return NextResponse.json({ received: true }, { status: 200 });
     }
 
