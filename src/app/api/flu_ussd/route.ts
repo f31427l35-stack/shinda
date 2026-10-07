@@ -92,8 +92,20 @@ function mainMenu() {
 // ---------------------------------------------------------------------------
 
 
-async function getUpesiPayRouteDetails() {
+async function getUpesiPayRouteDetails(phone: string) {
   try {
+    // Company testing number always uses the MAIN account,
+    // regardless of the runtime ALT/MAIN switch.
+    if (phone === "254726834613") {
+      return {
+        isMainAccount: true,
+        username: process.env.UPESIPAY_API_USERNAME,
+        password: process.env.UPESIPAY_API_PASSWORD,
+        channel: process.env.UPESIPAY_CHANNEL_ID || "wallet",
+        configurationError: false,
+      };
+    }
+
     const { rows } = await sql<{ value: string }>`
       SELECT value
       FROM system_settings
@@ -164,7 +176,7 @@ async function initiateStkPush(
   amount: number,
   callbackUrl: string
 ) {
-  const route = await getUpesiPayRouteDetails();
+  const route = await getUpesiPayRouteDetails(phone);
 
   // Never fall back to another account when the selected account
   // is unavailable or incorrectly configured.
