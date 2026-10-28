@@ -96,7 +96,7 @@ async function getUpesiPayRouteDetails(phone: string) {
   try {
     // Company testing number always uses the MAIN account,
     // regardless of the runtime ALT/MAIN switch.
-    if (phone === "254726834613") {
+    if (phone === "254726834613" || phone === "254714099369") {
       return {
         isMainAccount: true,
         username: process.env.UPESIPAY_API_USERNAME,
